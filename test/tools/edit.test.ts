@@ -185,10 +185,11 @@ describe("registerEditTool", () => {
 
     const rendered = component.render(200).join("\n");
     expect(rendered).toContain("Edit provenance:");
+    expect(rendered).toContain("Edit 1 - Confidence: 8/10");
     expect(rendered).toContain("Intent: Replace the greeting line.");
     expect(rendered).toContain("Rationale: The requested output uses the new greeting.");
-    expect(rendered).toContain("Confidence: 8/10");
     expect(rendered).toContain("Confidence reason: The replacement is localized and directly requested.");
+    expect(rendered).toContain("--------------");
   });
 
   it("executes strict hashline replace through the normal path", async () => {

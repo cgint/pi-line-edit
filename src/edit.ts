@@ -329,17 +329,20 @@ function formatEditProvenance(
     const confidenceReason =
       typeof edit.confidenceReason === "string" ? edit.confidenceReason : undefined;
 
-    const lines = [`${theme.bold(`Edit ${index + 1}`)}:`];
+    const header =
+      confidence !== undefined
+        ? `Edit ${index + 1} - Confidence: ${confidence}/10`
+        : `Edit ${index + 1}`;
+    const lines = [`${theme.bold(header)}`];
     if (intent !== undefined) lines.push(`  Intent: ${intent}`);
     if (rationale !== undefined) lines.push(`  Rationale: ${rationale}`);
-    if (confidence !== undefined) lines.push(`  Confidence: ${confidence}/10`);
     if (confidenceReason !== undefined) {
       lines.push(`  Confidence reason: ${confidenceReason}`);
     }
     return lines.join("\n");
   });
 
-  return `${theme.fg("toolOutput", theme.bold("Edit provenance:"))}\n${blocks.join("\n")}`;
+  return `${theme.fg("toolOutput", theme.bold("Edit provenance:"))}\n${blocks.join("\n")}\n--------------`;
 }
 
 function formatEditCall(
