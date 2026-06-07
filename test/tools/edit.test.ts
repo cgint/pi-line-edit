@@ -270,6 +270,62 @@ describe("registerEditTool", () => {
       expect(result.details?.diff).toContain("+2");
     });
   });
+  it("appends at EOF when plain range is the line after the final visible line", async () => {
+    await withTempFile("sample.txt", "aaa\nbbb\n", async ({ cwd, path }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+
+      const result = await editTool.execute(
+        "e1",
+        {
+          path: "sample.txt",
+          edits: [{ range: ["3", "3"], lines: ["ccc", "ddd"] }],
+        },
+        undefined,
+        undefined,
+        { cwd } as any,
+      );
+
+      expect(await readFile(path, "utf-8")).toBe("aaa\nbbb\nccc\nddd\n");
+      expect(result.details?.diff).toContain("+3│ccc");
+      expect(result.details?.diff).toContain("+4│ddd");
+    });
+  });
+
+  it("reports a line-number out-of-bounds error without mentioning missing hashes", async () => {
+    await withTempFile("sample.txt", "aaa\nbbb\n", async ({ cwd }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+
+      await expect(
+        editTool.execute(
+          "e1",
+          {
+            path: "sample.txt",
+            edits: [{ range: ["4", "4"], lines: ["too far"] }],
+          },
+          undefined,
+          undefined,
+          { cwd } as any,
+        ),
+      ).rejects.toThrow(/\[E_RANGE_OOB\].*line 4 does not exist.*file has 2 lines/i);
+
+      await expect(
+        editTool.execute(
+          "e2",
+          {
+            path: "sample.txt",
+            edits: [{ range: ["4", "4"], lines: ["too far"] }],
+          },
+          undefined,
+          undefined,
+          { cwd } as any,
+        ),
+      ).rejects.not.toThrow(/missing hash|LINE#HASH/i);
+    });
+  });
 });
   it("rejects edits on empty files with E_EMPTY_FILE", async () => {
     await withTempFile("empty.txt", "", async ({ cwd }) => {

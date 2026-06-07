@@ -130,14 +130,21 @@ export function normalizeEditItems(edits: Record<string, unknown>[]): HashlineTo
   });
 }
 
-function anchorBareLineRef(ref: string | undefined, fileLines: string[]): string | undefined {
+function anchorBareLineRef(
+  ref: string | undefined,
+  fileLines: string[],
+  visibleLineCount: number,
+  label: "range start" | "range end",
+): string | undefined {
   if (typeof ref !== "string") return ref;
   const trimmed = ref.trim();
   if (!/^\d+$/.test(trimmed)) return ref;
 
   const line = Number.parseInt(trimmed, 10);
-  if (line < 1 || line > fileLines.length) {
-    return ref;
+  if (line < 1 || line > visibleLineCount) {
+    throw new Error(
+      `[E_RANGE_OOB] ${label} line ${line} does not exist (file has ${visibleLineCount} lines). Plain line-number ranges must reference existing lines, except ["${visibleLineCount + 1}", "${visibleLineCount + 1}"] which appends at end of file.`,
+    );
   }
 
   return `${line}${ANCHOR_SEP}${computeLineHash(fileLines, line - 1)}`;
@@ -148,11 +155,42 @@ function anchorBareLineNumberEdits(
   content: string,
 ): HashlineToolEdit[] {
   const fileLines = content.split("\n");
-  return edits.map((edit) => ({
-    ...edit,
-    pos: anchorBareLineRef(edit.pos, fileLines) ?? edit.pos,
-    end: anchorBareLineRef(edit.end, fileLines),
-  }));
+  const visibleLineCount = content.endsWith("\n") ? fileLines.length - 1 : fileLines.length;
+
+  return edits.map((edit) => {
+    const pos = typeof edit.pos === "string" ? edit.pos.trim() : edit.pos;
+    const end = typeof edit.end === "string" ? edit.end.trim() : edit.end;
+
+    if (/^\d+$/.test(pos) && /^\d+$/.test(end ?? "")) {
+      const startLine = Number.parseInt(pos, 10);
+      const endLine = Number.parseInt(end!, 10);
+      const appendLine = visibleLineCount + 1;
+
+      if (startLine === appendLine && endLine === appendLine) {
+        if (visibleLineCount < 1) {
+          throw new Error(
+            "[E_EMPTY_FILE] Cannot append by line number to an empty file. Use the write tool to create initial content in an empty file.",
+          );
+        }
+
+        const lastLine = fileLines[visibleLineCount - 1] ?? "";
+        const lastRef = `${visibleLineCount}${ANCHOR_SEP}${computeLineHash(fileLines, visibleLineCount - 1)}`;
+        const appendedLines = edit.lines ?? [];
+        return {
+          ...edit,
+          pos: lastRef,
+          end: lastRef,
+          lines: [lastLine, ...appendedLines],
+        };
+      }
+    }
+
+    return {
+      ...edit,
+      pos: anchorBareLineRef(edit.pos, fileLines, visibleLineCount, "range start") ?? edit.pos,
+      end: anchorBareLineRef(edit.end, fileLines, visibleLineCount, "range end"),
+    };
+  });
 }
 
 type EditTargetResult =
