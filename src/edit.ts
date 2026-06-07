@@ -31,7 +31,9 @@ import { setLastEdit } from "./undo";
 
 const editEntrySchema = Type.Object(
   {
-    range: Type.Tuple([Type.String(), Type.String()], {
+    range: Type.Array(Type.String(), {
+      minItems: 2,
+      maxItems: 2,
       description:
         `Inclusive 1-based line range [start, end]. Plain line numbers like ["42", "42"] are accepted. LINE${ANCHOR_SEP}HASH anchors like ["42${ANCHOR_SEP}A4", "42${ANCHOR_SEP}A4"] are also accepted when copied from read output.`,
     }),

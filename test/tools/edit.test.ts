@@ -53,9 +53,15 @@ describe("registerEditTool", () => {
     ).toBe(false);
   });
 
-  it("publishes a top-level object schema for pi tool registration", () => {
+  it("publishes an OpenAI-compatible object schema for pi tool registration", () => {
     expect((hashlineEditToolSchema as any).type).toBe("object");
     expect((hashlineEditToolSchema as any).anyOf).toBeUndefined();
+
+    const rangeSchema = (hashlineEditToolSchema as any).properties.edits.items.properties.range;
+    expect(Array.isArray(rangeSchema.items)).toBe(false);
+    expect(rangeSchema.items.type).toBe("string");
+    expect(rangeSchema.minItems).toBe(2);
+    expect(rangeSchema.maxItems).toBe(2);
   });
 
   it("registers the edit tool without a prepareArguments shim", () => {
