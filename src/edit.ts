@@ -316,6 +316,32 @@ function buildAppliedChangedResultText(
   return sections.length > 0 ? sections.join("\n\n") : undefined;
 }
 
+function formatEditProvenance(
+  edits: Record<string, unknown>[] | undefined,
+  theme: { bold: (text: string) => string; fg: (token: string, text: string) => string },
+): string | undefined {
+  if (!Array.isArray(edits) || edits.length === 0) return undefined;
+
+  const blocks = edits.map((edit, index) => {
+    const intent = typeof edit.intent === "string" ? edit.intent : undefined;
+    const rationale = typeof edit.rationale === "string" ? edit.rationale : undefined;
+    const confidence = typeof edit.confidence === "number" ? edit.confidence : undefined;
+    const confidenceReason =
+      typeof edit.confidenceReason === "string" ? edit.confidenceReason : undefined;
+
+    const lines = [`${theme.bold(`Edit ${index + 1}`)}:`];
+    if (intent !== undefined) lines.push(`  Intent: ${intent}`);
+    if (rationale !== undefined) lines.push(`  Rationale: ${rationale}`);
+    if (confidence !== undefined) lines.push(`  Confidence: ${confidence}/10`);
+    if (confidenceReason !== undefined) {
+      lines.push(`  Confidence reason: ${confidenceReason}`);
+    }
+    return lines.join("\n");
+  });
+
+  return `${theme.fg("toolOutput", theme.bold("Edit provenance:"))}\n${blocks.join("\n")}`;
+}
+
 function formatEditCall(
   args: EditRequestParams | undefined,
   state: EditRenderState,
@@ -331,6 +357,11 @@ function formatEditCall(
       ? theme.fg("accent", path)
       : theme.fg("toolOutput", "...");
   let text = `${theme.fg("toolTitle", theme.bold("edit"))} ${pathDisplay}`;
+
+  const provenance = formatEditProvenance(args?.edits, theme);
+  if (provenance) {
+    text += `\n\n${provenance}`;
+  }
 
   if (!state.preview) {
     return text;

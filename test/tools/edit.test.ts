@@ -149,6 +149,48 @@ describe("registerEditTool", () => {
     expect(registered?.prepareArguments).toBeUndefined();
   });
 
+  it("renders edit provenance metadata in the visible call", () => {
+    const { pi, getTool } = makeFakePiRegistry();
+    registerEditTool(pi);
+    const editTool = getTool("edit");
+    const theme = {
+      bold: (text: string) => text,
+      fg: (_token: string, text: string) => text,
+    };
+
+    const component = editTool.renderCall(
+      {
+        path: "sample.txt",
+        edits: [
+          {
+            range: ["1#AB", "1#AB"],
+            lines: ["hello"],
+            intent: "Replace the greeting line.",
+            rationale: "The requested output uses the new greeting.",
+            confidence: 8,
+            confidenceReason: "The replacement is localized and directly requested.",
+          },
+        ],
+      },
+      theme,
+      {
+        argsComplete: false,
+        state: {},
+        cwd: process.cwd(),
+        expanded: false,
+        lastComponent: undefined,
+        invalidate() {},
+      },
+    ) as { render: (width: number) => string[] };
+
+    const rendered = component.render(200).join("\n");
+    expect(rendered).toContain("Edit provenance:");
+    expect(rendered).toContain("Intent: Replace the greeting line.");
+    expect(rendered).toContain("Rationale: The requested output uses the new greeting.");
+    expect(rendered).toContain("Confidence: 8/10");
+    expect(rendered).toContain("Confidence reason: The replacement is localized and directly requested.");
+  });
+
   it("executes strict hashline replace through the normal path", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd, path }) => {
       const { pi, getTool } = makeFakePiRegistry();
