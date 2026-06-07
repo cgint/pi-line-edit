@@ -1,12 +1,12 @@
 {
-  "name": "@jerryan/pi-hashline-edit",
-  "version": "0.8.3",
-  "description": "Fork of pi-hashline-edit with trimmed schema, unified diff, and extra safety guardrails.",
+  "name": "pi-line-edit",
+  "version": "0.1.0",
+  "description": "Pi extension for line-number based file reading and editing with clean line-numbered diffs.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/JerryAZR/pi-hashline-edit.git"
+    "url": "git+https://github.com/cgint/pi-line-edit.git"
   },
-  "author": "JerryAZR",
+  "author": "cgint, based on @jerryan/pi-hashline-edit",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
@@ -15,7 +15,7 @@
     "pi",
     "coding-agent",
     "extension",
-    "hashline"
+    "line-edit"
   ],
   "license": "MIT",
   "files": [

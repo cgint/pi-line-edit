@@ -289,8 +289,8 @@ describe("file kind guards in tools", () => {
         const text = getText(result);
         expect(text).toContain("<LinearLayout");
         expect(text).not.toMatch(/binary file/i);
-        // Text path renders hashline-prefixed lines (e.g. "1#<hash>:<?xml ...").
-        expect(text).toMatch(/^\s*\d+#[0-9 A-F]{2}│<\?xml/m);
+        // Text path renders line-number-prefixed lines (e.g. "1│<?xml ...").
+        expect(text).toMatch(/^\s*\d+│<\?xml/m);
       },
     );
   });

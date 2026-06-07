@@ -7,8 +7,8 @@ function extractRef(text: string, content: string): string {
   return line.split("│")[0]!.replace(/^[+\- ]/, "").trim();
 }
 
-describe("chained edit anchors", () => {
-  it("returns updated anchors in edit result for a single-line replace", async () => {
+describe("chained line edits", () => {
+  it("returns line-numbered diff for a single-line replace", async () => {
     await withTempFile("sample.ts", "alpha\nbeta\ngamma\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -28,11 +28,11 @@ describe("chained edit anchors", () => {
         ctx,
       );
 
-      // Diff shows the change with new anchor
-      expect(editResult.content[0].text).toContain("+2#");
+      // Diff shows the change with line numbers
+      expect(editResult.content[0].text).toContain("+2│");
       expect(editResult.content[0].text).toContain("│BETA");
 
-      // Extract fresh anchor from diff and chain another edit
+      // Extract fresh line number from diff and chain another edit
       const freshRef = extractRef(editResult.content[0].text, "BETA");
 
       const editResult2 = await editTool.execute(
@@ -43,7 +43,7 @@ describe("chained edit anchors", () => {
         ctx,
       );
 
-      expect(editResult2.content[0].text).toContain("+2#");
+      expect(editResult2.content[0].text).toContain("+2│");
       expect(editResult2.content[0].text).toContain("│BETA-CHAINED");
     });
   });
@@ -72,7 +72,7 @@ describe("chained edit anchors", () => {
       );
 
       // Diff is always shown; no "anchors omitted" fallback
-      expect(editResult.content[0].text).toMatch(/\+\s*1#/);
+      expect(editResult.content[0].text).toMatch(/\+\s*1│/);
       expect(editResult.content[0].text).not.toContain("Anchors omitted");
     });
   });
@@ -97,7 +97,7 @@ describe("chained edit anchors", () => {
         ctx,
       );
 
-      expect(editResult.content[0].text).toContain("+2#");
+      expect(editResult.content[0].text).toContain("+2│");
       expect(editResult.content[0].text).toContain("│appended");
     });
   });
@@ -122,7 +122,7 @@ describe("chained edit anchors", () => {
         ctx,
       );
 
-      expect(editResult.content[0].text).toContain("+1#");
+      expect(editResult.content[0].text).toContain("+1│");
       expect(editResult.content[0].text).toContain("│prepended");
     });
   });
@@ -147,12 +147,12 @@ describe("chained edit anchors", () => {
         ctx,
       );
 
-      // No empty hashline anchors like "3#09:" should appear
-      const anchorLines = editResult.content[0].text
+      // No empty line-numbered diff rows should appear.
+      const numberedLines = editResult.content[0].text
         .split("\n")
-        .filter((line: string) => line.match(/^[+\- ]\s*\d+#\w{2}│.*/));
-      for (const line of anchorLines) {
-        expect(line).not.toMatch(/^\s*\d+#\w{2}│$/);
+        .filter((line: string) => line.match(/^[+\- ]\s*\d+│.*/));
+      for (const line of numberedLines) {
+        expect(line).not.toMatch(/^\s*\d+│$/);
       }
     });
   });
@@ -179,7 +179,7 @@ describe("chained edit anchors", () => {
       );
 
       // Diff always shown; no budget-based omission
-      expect(editResult.content[0].text).toMatch(/\+\s*2#/);
+      expect(editResult.content[0].text).toMatch(/\+\s*2│/);
       expect(editResult.content[0].text).not.toContain("Anchors omitted");
     });
   });
@@ -207,16 +207,14 @@ describe("chained edit anchors", () => {
         ctx,
       );
 
-      // Old dRef is stale because line 4 content changed
-      await expect(
-        editTool.execute(
-          "e2-stale",
-          { path: "stale.ts", edits: [{ range: [dRef, dRef], lines: ["D-AGAIN"] }] },
-          undefined,
-          undefined,
-          ctx,
-        ),
-      ).rejects.toThrow(/stale anchor/);
+      // Plain line numbers resolve against current content, so the old line number remains usable.
+      await editTool.execute(
+        "e2-line-number",
+        { path: "stale.ts", edits: [{ range: [dRef, dRef], lines: ["D-AGAIN"] }] },
+        undefined,
+        undefined,
+        ctx,
+      );
 
       // Distant line 1 anchor is still valid (neighbors unchanged)
       const aEdit = await editTool.execute(
@@ -226,7 +224,7 @@ describe("chained edit anchors", () => {
         undefined,
         ctx,
       );
-      expect(aEdit.content[0].text).toContain("+1#");
+      expect(aEdit.content[0].text).toContain("+1│");
       expect(aEdit.content[0].text).toContain("│A");
     });
   });

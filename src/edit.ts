@@ -15,6 +15,7 @@ import {
 import { resolveMutationTargetPath, writeFileAtomically } from "./fs-write";
 import {
   applyHashlineEdits,
+  computeLineHash,
   resolveEditAnchors,
   type HashlineToolEdit,
   ANCHOR_SEP,
@@ -32,7 +33,7 @@ const editEntrySchema = Type.Object(
   {
     range: Type.Tuple([Type.String(), Type.String()], {
       description:
-        `LINE${ANCHOR_SEP}HASH anchor pair [start, end] copied from a recent \`read\` or diff output. Use the same anchor twice for single-line: ["42${ANCHOR_SEP}A4", "42${ANCHOR_SEP}A4"].`,
+        `Inclusive 1-based line range [start, end]. Plain line numbers like ["42", "42"] are accepted. LINE${ANCHOR_SEP}HASH anchors like ["42${ANCHOR_SEP}A4", "42${ANCHOR_SEP}A4"] are also accepted when copied from read output.`,
     }),
     lines: Type.Array(Type.String(), {
       description: "New content lines. Use [] to delete.",
@@ -44,7 +45,7 @@ export const hashlineEditToolSchema = Type.Object(
   {
     path: Type.String({ description: "path" }),
     edits: Type.Array(editEntrySchema, {
-      description: `Edits to apply to $path. Each edit replaces the range [start, end] with lines. Use the same anchor twice for single-line; use [] to delete.`,
+      description: `Edits to apply to $path. Each edit replaces the inclusive line range [start, end] with lines. Use the same line twice for single-line; use [] to delete.`,
     }),
   },
   { additionalProperties: false },
@@ -108,6 +109,31 @@ export function normalizeEditItems(edits: Record<string, unknown>[]): HashlineTo
     const [pos, end] = (edit.range as [string, string]) || ["", ""];
     return { op: "replace", pos, end, lines: (edit.lines as string[]) || [] };
   });
+}
+
+function anchorBareLineRef(ref: string | undefined, fileLines: string[]): string | undefined {
+  if (typeof ref !== "string") return ref;
+  const trimmed = ref.trim();
+  if (!/^\d+$/.test(trimmed)) return ref;
+
+  const line = Number.parseInt(trimmed, 10);
+  if (line < 1 || line > fileLines.length) {
+    return ref;
+  }
+
+  return `${line}${ANCHOR_SEP}${computeLineHash(fileLines, line - 1)}`;
+}
+
+function anchorBareLineNumberEdits(
+  edits: HashlineToolEdit[],
+  content: string,
+): HashlineToolEdit[] {
+  const fileLines = content.split("\n");
+  return edits.map((edit) => ({
+    ...edit,
+    pos: anchorBareLineRef(edit.pos, fileLines) ?? edit.pos,
+    end: anchorBareLineRef(edit.end, fileLines),
+  }));
 }
 
 type EditTargetResult =
@@ -324,7 +350,9 @@ export async function computeEditPreview(
   const originalNormalized = target.normalized;
 
   try {
-    const resolved = resolveEditAnchors(toolEdits);
+    const resolved = resolveEditAnchors(
+      anchorBareLineNumberEdits(toolEdits, originalNormalized),
+    );
     const result = applyHashlineEdits(originalNormalized, resolved).content;
 
     if (originalNormalized === result) {
@@ -485,8 +513,9 @@ const editToolDefinition: EditToolDefinition = {
       }
       const { bom, normalized: originalNormalized, ending: originalEnding } = target;
 
-      const resolved = resolveEditAnchors(toolEdits);
-
+      const resolved = resolveEditAnchors(
+        anchorBareLineNumberEdits(toolEdits, originalNormalized),
+      );
 
       const anchorResult = applyHashlineEdits(originalNormalized, resolved, signal);
       const result = anchorResult.content;

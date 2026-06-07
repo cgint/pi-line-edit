@@ -13,7 +13,7 @@ import { access as fsAccess, readdir as fsReaddir } from "fs/promises";
 import { constants } from "fs";
 import { normalizeToLF, stripBom } from "./edit-diff";
 import { loadFileKindAndText } from "./file-kind";
-import { formatHashlineRegion } from "./hashline";
+
 import { resolveToCwd } from "./path-utils";
 import { throwIfAborted } from "./runtime";
 import { getFileSnapshot } from "./snapshot";
@@ -65,6 +65,22 @@ function getPreviewLines(text: string): string[] {
   return text.endsWith("\n") ? lines.slice(0, -1) : lines;
 }
 
+function formatLineNumberRegion(
+  fileLines: string[],
+  startLine: number,
+  endLine: number,
+): string {
+  const lineNumberWidth = String(endLine).length;
+  return fileLines
+    .slice(startLine - 1, endLine)
+    .map((line, index) => {
+      const lineNumber = startLine + index;
+      const paddedLineNumber = String(lineNumber).padStart(lineNumberWidth, " ");
+      return `${paddedLineNumber}│${line}`;
+    })
+    .join("\n");
+}
+
 export function formatHashlineReadPreview(
   text: string,
   options: { offset?: number; limit?: number; raw?: boolean },
@@ -95,12 +111,12 @@ export function formatHashlineReadPreview(
     ? Math.min(startLine - 1 + limit, totalLines)
     : totalLines;
   const selected = allLines.slice(startLine - 1, endIdx);
-  const formatted = options.raw ? selected.join("\n") : formatHashlineRegion(allLines, startLine, endIdx);
+  const formatted = options.raw ? selected.join("\n") : formatLineNumberRegion(allLines, startLine, endIdx);
 
   const truncation = truncateHead(formatted);
   if (truncation.firstLineExceedsLimit) {
     return {
-      text: `[Line ${startLine} exceeds ${formatSize(truncation.maxBytes)}.${options.raw ? "" : " Hashline output requires full lines; cannot compute hashes for a truncated preview."}]`,
+      text: `[Line ${startLine} exceeds ${formatSize(truncation.maxBytes)}.]`,
 
       truncation,
     };
@@ -153,7 +169,7 @@ export function registerReadTool(pi: ExtensionAPI): void {
       ),
       raw: Type.Optional(
         Type.Boolean({
-          description: "Return raw text without LINE#HASH anchors, saving tokens. Don't use if you plan to edit this file.",
+          description: "Return raw text without line-number prefixes, saving tokens for exploration or reference reads.",
         }),
       ),
     }),

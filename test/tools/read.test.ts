@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import register from "../../index";
-import { formatHashlineRegion } from "../../src/hashline";
 import { formatHashlineReadPreview } from "../../src/read";
-import { computeLineHash } from "../../src/hashline";
 import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
 vi.mock("../../src/file-kind", () => ({
@@ -13,21 +11,20 @@ vi.mock("../../src/file-kind", () => ({
 import * as fileKindMod from "../../src/file-kind";
 
 describe("formatHashlineReadPreview", () => {
-  it("refuses to emit a truncated hashline for an oversized first line", () => {
+  it("reports an oversized first line", () => {
     const longLine = "x".repeat(70_000);
     const result = formatHashlineReadPreview(longLine, { offset: 1 });
 
-    expect(result.text).toContain("Hashline output requires full lines");
+    expect(result.text).toContain("Line 1 exceeds");
     expect(result.truncation?.truncated).toBe(true);
     expect(result.truncation?.truncatedBy).toBe("bytes");
     expect(result.truncation?.firstLineExceedsLimit).toBe(true);
   });
 
-  it("formats ordinary lines as full hashlines", () => {
+  it("formats ordinary lines with line numbers", () => {
     const result = formatHashlineReadPreview("alpha\nbeta", { offset: 1 });
 
-    expect(result.text).toContain("1#");
-    expect(result.text).toContain("│alpha");
+    expect(result.text).toContain("1│alpha");
   });
 
   it("pads line numbers to the same width within the returned block", () => {
@@ -36,9 +33,9 @@ describe("formatHashlineReadPreview", () => {
     const result = formatHashlineReadPreview(text, { offset: 8 });
 
     expect(result.text.split("\n").slice(0, 3)).toEqual([
-      ` 8#${computeLineHash(allLines, 7)}│line-8`,
-      ` 9#${computeLineHash(allLines, 8)}│line-9`,
-      `10#${computeLineHash(allLines, 9)}│line-10`,
+      " 8│line-8",
+      " 9│line-9",
+      "10│line-10",
     ]);
   });
 
@@ -47,17 +44,15 @@ describe("formatHashlineReadPreview", () => {
 
     expect(result.text).toContain("File is empty");
     expect(result.text).toContain("write tool");
-    expect(result.text).not.toContain("1#");
+    expect(result.text).not.toContain("1│");
   });
 
   it("hides the terminal newline sentinel from preview output", () => {
     const result = formatHashlineReadPreview("alpha\nbeta\n", { offset: 1 });
 
-    expect(result.text).toContain("1#");
-    expect(result.text).toContain("2#");
-    expect(result.text).toContain("│alpha");
-    expect(result.text).toContain("│beta");
-    expect(result.text).not.toContain("3#");
+    expect(result.text).toContain("1│alpha");
+    expect(result.text).toContain("2│beta");
+    expect(result.text).not.toContain("3│");
     expect(result.text).not.toContain("2 lines total");
   });
 
@@ -87,40 +82,6 @@ describe("formatHashlineReadPreview", () => {
     expect(() =>
       formatHashlineReadPreview("alpha\nbeta", { limit: 0 }),
     ).toThrow(/limit.*positive integer/i);
-  });
-});
-
-describe("formatHashlineRegion", () => {
-  it("formats lines with LINE#HASH anchors starting from the given line number", () => {
-    const fileLines = ["", "", "", "", "alpha", "beta", "gamma"];
-    const result = formatHashlineRegion(fileLines, 5, 7);
-
-    expect(result).toBe(
-      `5#${computeLineHash(fileLines, 4)}│alpha\n` +
-      `6#${computeLineHash(fileLines, 5)}│beta\n` +
-      `7#${computeLineHash(fileLines, 6)}│gamma`,
-    );
-  });
-
-  it("pads region line numbers to the widest line number", () => {
-    const fileLines = ["", "", "", "", "", "", "", "alpha", "beta", "gamma"];
-    const result = formatHashlineRegion(fileLines, 8, 10);
-
-    expect(result).toBe(
-      ` 8#${computeLineHash(fileLines, 7)}│alpha\n` +
-      ` 9#${computeLineHash(fileLines, 8)}│beta\n` +
-      `10#${computeLineHash(fileLines, 9)}│gamma`,
-    );
-  });
-
-  it("handles a single line", () => {
-    const result = formatHashlineRegion(["hello"], 1, 1);
-    expect(result).toBe(`1#${computeLineHash(["hello"], 0)}│hello`);
-  });
-
-  it("handles empty array", () => {
-    const result = formatHashlineRegion([], 1, 1);
-    expect(result).toBe("");
   });
 });
 
@@ -170,7 +131,7 @@ describe("read tool protocol", () => {
 
       expect(result.content[0].text).toContain("│alpha");
       expect(result.content[0].text).toContain("│beta");
-      expect(result.content[0].text).not.toContain("3#");
+      expect(result.content[0].text).not.toContain("3│");
     });
   });
 

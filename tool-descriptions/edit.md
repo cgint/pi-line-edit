@@ -1,23 +1,24 @@
-Patch a UTF-8 text file using `LINE#HASH` anchors copied verbatim from `read`.
+Patch a UTF-8 text file using line ranges.
 
-Submit one `edit` call per file. All operations go in a single `edits` array; anchors must come from the same fresh source — the most recent `read` or diff output of a successful `edit` on this file.
+Submit one `edit` call per file. All operations go in a single `edits` array.
 
-Each edit entry replaces an inclusive anchor range:
+Each edit entry replaces an inclusive line range:
 ```json
-{ "range": [startAnchor, endAnchor], "lines": [...] }
+{ "range": [start, end], "lines": [...] }
 ```
-- `range` — `[start, end]` pair of LINE#HASH anchors from the most recent `read` or diff output.
-  Use the same anchor twice for single-line: `["42#A4", "42#A4"]`.
+- `range` — `[start, end]` pair. Prefer `LINE#HASH` anchors copied from a recent `read` or diff output when available, e.g. `["42#A4", "42#A4"]`.
+  Plain 1-based line numbers are also accepted, e.g. `["42", "42"]` or `["20", "25"]`; they are resolved against the current file contents at execution time.
 - `lines` — new content replacing the range (string array). Use `[]` to delete.
   Must be literal file content, not LINE#HASH│-prefixed output. Match indentation exactly.
 
-Example:
+Examples:
 ```json
 { "path": "src/main.ts", "edits": [
-  { "range": ["12#3F", "12#3F"], "lines": ["const x = 1;"] },
-  { "range": ["20#B2", "25#C7"], "lines": ["function foo() {", "  return 42;", "}"] }
+  { "range": ["12", "12"], "lines": ["const x = 1;"] },
+  { "range": ["20", "25"], "lines": ["function foo() {", "  return 42;", "}"] }
 ] }
+```
 
 Rules:
-- Do not guess or construct anchors. Copy them from the most recent `read` or diff output of this file.
+- Use plain line numbers when that is simpler. Use `LINE#HASH` anchors when you need stale-context protection.
 - Do not emit overlapping or adjacent edits — merge them into one.

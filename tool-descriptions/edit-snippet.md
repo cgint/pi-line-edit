@@ -1,1 +1,1 @@
-Edit a text file via LINE#HASH anchors from read
+Edit a text file by replacing plain line ranges or LINE#HASH anchors

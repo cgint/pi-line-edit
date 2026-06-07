@@ -152,8 +152,7 @@ describe("registerEditTool", () => {
       expect(rendered).not.toContain("Changes: +1 -1");
       expect(rendered).not.toContain("Diff preview:");
       expect(rendered).not.toContain("```diff");
-      const hash = computeLineHash(["aaa", "BBB", "ccc"], 1);
-      expect(rendered).toContain(`[success]+2#${hash}│BBB[/success]`);
+      expect(rendered).toContain(`[success]+2│BBB[/success]`);
       expect(rendered).not.toContain("Updated sample.txt");
       expect(rendered).not.toContain("```text");
       expect(result.details?.diff).toContain("+2");

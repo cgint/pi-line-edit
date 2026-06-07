@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "fs/promises";
 import register from "../../index";
 import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
-describe("strict hashline tool loop", () => {
-  it("supports read -> fresh edit -> stale rejection -> retry with fresh anchor", async () => {
-    await withTempFile("sample.ts", "alpha\nbeta\n", async ({ cwd }) => {
+describe("line-number edit tool loop", () => {
+  it("supports read -> edit -> reuse the same line number against current content", async () => {
+    await withTempFile("sample.ts", "alpha\nbeta\n", async ({ cwd, path }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const ctx = { cwd, ui: { notify() {} } } as any;
@@ -17,7 +18,10 @@ describe("strict hashline tool loop", () => {
       const betaRef = firstText
         .split("\n")
         .find((line: string) => line.includes("│beta"))!
-        .split("│")[0]!;
+        .split("│")[0]!
+        .trim();
+
+      expect(betaRef).toBe("2");
 
       await editTool.execute(
         "e1",
@@ -30,36 +34,20 @@ describe("strict hashline tool loop", () => {
         ctx,
       );
 
-      await expect(
-        editTool.execute(
-          "e2",
-          {
-            path: "sample.ts",
-            edits: [{ range: [betaRef, betaRef], lines: ["BETA2"] }],
-          },
-          undefined,
-          undefined,
-          ctx,
-        ),
-      ).rejects.toThrow(/stale anchor/);
-
-      const secondRead = await readTool.execute("r2", { path: "sample.ts" }, undefined, undefined, ctx);
-      const secondText = secondRead.content[0].text as string;
-      const freshRef = secondText
-        .split("\n")
-        .find((line: string) => line.includes("│BETA1"))!
-        .split("│")[0]!;
-
-      await editTool.execute(
-        "e3",
+      const secondEdit = await editTool.execute(
+        "e2",
         {
           path: "sample.ts",
-          edits: [{ range: [freshRef, freshRef], lines: ["BETA2"] }],
+          edits: [{ range: [betaRef, betaRef], lines: ["BETA2"] }],
         },
         undefined,
         undefined,
         ctx,
       );
+
+      expect(secondEdit.content[0].text).toContain("-2│BETA1");
+      expect(secondEdit.content[0].text).toContain("+2│BETA2");
+      expect(await readFile(path, "utf-8")).toBe("alpha\nBETA2\n");
     });
   });
 });
