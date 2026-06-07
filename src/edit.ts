@@ -31,7 +31,7 @@ import { setLastEdit } from "./undo";
 
 const editEntrySchema = Type.Object(
   {
-    range: Type.Array(Type.String(), {
+    range: Type.Array(Type.String({ minLength: 1 }), {
       minItems: 2,
       maxItems: 2,
       description:
@@ -39,6 +39,23 @@ const editEntrySchema = Type.Object(
     }),
     lines: Type.Array(Type.String(), {
       description: "New content lines. Use [] to delete.",
+    }),
+    intent: Type.String({
+      minLength: 1,
+      description: "Required non-empty statement of what this edit is trying to accomplish.",
+    }),
+    rationale: Type.String({
+      minLength: 1,
+      description: "Required non-empty explanation of why this edit is appropriate.",
+    }),
+    confidence: Type.Integer({
+      minimum: 0,
+      maximum: 10,
+      description: "Required integer self-assessed confidence score from 0 to 10. A score of 10 must be justified by the confidenceReason argument.",
+    }),
+    confidenceReason: Type.String({
+      minLength: 1,
+      description: "Required non-empty argument for the confidence score, including evidence and uncertainty. For confidence 10, explain the concrete verification, exact mechanical nature, or exact local pattern that justifies maximum confidence.",
     }),
   },
   { additionalProperties: false },

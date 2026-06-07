@@ -29,7 +29,16 @@ describe("registerEditTool", () => {
     expect(
       validate({
         path: "a.ts",
-        edits: [{ range: ["1#AB", "1#AB"], lines: ["x"] }],
+        edits: [
+          {
+            range: ["1#AB", "1#AB"],
+            lines: ["x"],
+            intent: "Replace the target line with x.",
+            rationale: "The test exercises the published hashline edit payload.",
+            confidence: 8,
+            confidenceReason: "The payload is a direct schema fixture with valid required fields.",
+          },
+        ],
       }),
     ).toBe(true);
   });
@@ -41,16 +50,61 @@ describe("registerEditTool", () => {
     expect(
       validate({
         path: "a.ts",
-        edits: [{ after: "1#AB", lines: ["x"] }],
+        edits: [
+          {
+            after: "1#AB",
+            lines: ["x"],
+            intent: "Append x after the target line.",
+            rationale: "This intentionally checks the unsupported append shape.",
+            confidence: 8,
+            confidenceReason: "The payload is expected to fail because after is not published.",
+          },
+        ],
       }),
     ).toBe(false);
 
     expect(
       validate({
         path: "a.ts",
-        edits: [{ before: "1#AB", lines: ["x"] }],
+        edits: [
+          {
+            before: "1#AB",
+            lines: ["x"],
+            intent: "Prepend x before the target line.",
+            rationale: "This intentionally checks the unsupported prepend shape.",
+            confidence: 8,
+            confidenceReason: "The payload is expected to fail because before is not published.",
+          },
+        ],
       }),
     ).toBe(false);
+  });
+
+  it("requires non-empty provenance metadata and bounded integer confidence", () => {
+    const ajv = new Ajv({ allErrors: true });
+    const validate = ajv.compile(hashlineEditToolSchema as any);
+    const validEdit = {
+      range: ["1#AB", "1#AB"],
+      lines: ["x"],
+      intent: "Replace the target line with x.",
+      rationale: "The caller requested this exact replacement.",
+      confidence: 8,
+      confidenceReason: "The edit is a direct replacement fixture with all required fields present.",
+    };
+
+    for (const key of ["intent", "rationale", "confidence", "confidenceReason"] as const) {
+      const edit = { ...validEdit };
+      delete edit[key];
+      expect(validate({ path: "a.ts", edits: [edit] })).toBe(false);
+    }
+
+    for (const key of ["intent", "rationale", "confidenceReason"] as const) {
+      expect(validate({ path: "a.ts", edits: [{ ...validEdit, [key]: "" }] })).toBe(false);
+    }
+
+    expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidence: -1 }] })).toBe(false);
+    expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidence: 11 }] })).toBe(false);
+    expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidence: 7.5 }] })).toBe(false);
   });
 
   it("publishes an OpenAI-compatible object schema for pi tool registration", () => {
@@ -60,8 +114,17 @@ describe("registerEditTool", () => {
     const rangeSchema = (hashlineEditToolSchema as any).properties.edits.items.properties.range;
     expect(Array.isArray(rangeSchema.items)).toBe(false);
     expect(rangeSchema.items.type).toBe("string");
+    expect(rangeSchema.items.minLength).toBe(1);
     expect(rangeSchema.minItems).toBe(2);
     expect(rangeSchema.maxItems).toBe(2);
+
+    const editProperties = (hashlineEditToolSchema as any).properties.edits.items.properties;
+    expect(editProperties.intent.minLength).toBe(1);
+    expect(editProperties.rationale.minLength).toBe(1);
+    expect(editProperties.confidence.type).toBe("integer");
+    expect(editProperties.confidence.minimum).toBe(0);
+    expect(editProperties.confidence.maximum).toBe(10);
+    expect(editProperties.confidenceReason.minLength).toBe(1);
   });
 
   it("registers the edit tool without a prepareArguments shim", () => {
