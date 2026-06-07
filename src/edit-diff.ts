@@ -1,4 +1,5 @@
 import * as Diff from "diff";
+import { formatPublicLineRef } from "./line-ref";
 
 // ─── Line ending normalization ──────────────────────────────────────────
 
@@ -46,6 +47,16 @@ export function generateDiffString(
     newContent.split("\n").length,
   );
   const lineNumWidth = String(maxLineNum).length;
+  const oldFileLines = oldContent.length === 0
+    ? []
+    : oldContent.endsWith("\n")
+      ? oldContent.split("\n").slice(0, -1)
+      : oldContent.split("\n");
+  const newFileLines = newContent.length === 0
+    ? []
+    : newContent.endsWith("\n")
+      ? newContent.split("\n").slice(0, -1)
+      : newContent.split("\n");
   const output: string[] = [];
 
   for (let h = 0; h < patch.hunks.length; h++) {
@@ -64,15 +75,18 @@ export function generateDiffString(
       const text = line.slice(1);
 
       if (prefix === "-") {
-        const padded = String(oldLineNum).padStart(lineNumWidth, " ");
+        const publicRef = formatPublicLineRef(oldFileLines, oldLineNum);
+        const padded = publicRef.padStart(lineNumWidth + 1, " ");
         output.push(`-${padded}│${text}`);
         oldLineNum++;
       } else if (prefix === "+") {
-        const padded = String(newLineNum).padStart(lineNumWidth, " ");
+        const publicRef = formatPublicLineRef(newFileLines, newLineNum);
+        const padded = publicRef.padStart(lineNumWidth + 1, " ");
         output.push(`+${padded}│${text}`);
         newLineNum++;
       } else {
-        const padded = String(newLineNum).padStart(lineNumWidth, " ");
+        const publicRef = formatPublicLineRef(newFileLines, newLineNum);
+        const padded = publicRef.padStart(lineNumWidth + 1, " ");
         output.push(` ${padded}│${text}`);
         oldLineNum++;
         newLineNum++;

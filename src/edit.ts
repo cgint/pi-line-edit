@@ -28,6 +28,7 @@ import { throwIfAborted } from "./runtime";
 import { getFileSnapshot } from "./snapshot";
 import { buildChangedResponse, buildNoopResponse } from "./edit-response";
 import { setLastEdit } from "./undo";
+import { computePublicLineChecksum, getVisibleLineCount, parsePublicLineRef } from "./line-ref";
 
 const editEntrySchema = Type.Object(
   {
@@ -35,7 +36,7 @@ const editEntrySchema = Type.Object(
       minItems: 2,
       maxItems: 2,
       description:
-        `Inclusive 1-based line range [start, end]. Plain line numbers like ["42", "42"] are accepted. LINE${ANCHOR_SEP}HASH anchors like ["42${ANCHOR_SEP}A4", "42${ANCHOR_SEP}A4"] are also accepted when copied from read output.`,
+        `Inclusive 1-based line range [start, end]. Prefer checked line refs copied from read/diff output, e.g. ["42f", "44q"]. Plain line numbers like ["42", "42"] are accepted as a weaker fallback.`,
     }),
     lines: Type.Array(Type.String(), {
       description: "New content lines. Use [] to delete.",
@@ -130,21 +131,30 @@ export function normalizeEditItems(edits: Record<string, unknown>[]): HashlineTo
   });
 }
 
-function anchorBareLineRef(
+function anchorPublicLineRef(
   ref: string | undefined,
   fileLines: string[],
   visibleLineCount: number,
   label: "range start" | "range end",
 ): string | undefined {
   if (typeof ref !== "string") return ref;
-  const trimmed = ref.trim();
-  if (!/^\d+$/.test(trimmed)) return ref;
+  const parsed = parsePublicLineRef(ref);
+  if (!parsed) return ref;
 
-  const line = Number.parseInt(trimmed, 10);
+  const { line, checksum } = parsed;
   if (line < 1 || line > visibleLineCount) {
     throw new Error(
       `[E_RANGE_OOB] ${label} line ${line} does not exist (file has ${visibleLineCount} lines). Plain line-number ranges must reference existing lines, except ["${visibleLineCount + 1}", "${visibleLineCount + 1}"] which appends at end of file.`,
     );
+  }
+
+  if (checksum !== undefined) {
+    const actualChecksum = computePublicLineChecksum(fileLines, line);
+    if (checksum !== actualChecksum) {
+      throw new Error(
+        `[E_STALE_LINE] ${label} ${line}${checksum} no longer matches current line ${line}${actualChecksum}. Re-read this region and retry with the updated checked line reference.`,
+      );
+    }
   }
 
   return `${line}${ANCHOR_SEP}${computeLineHash(fileLines, line - 1)}`;
@@ -155,15 +165,17 @@ function anchorBareLineNumberEdits(
   content: string,
 ): HashlineToolEdit[] {
   const fileLines = content.split("\n");
-  const visibleLineCount = content.endsWith("\n") ? fileLines.length - 1 : fileLines.length;
+  const visibleLineCount = getVisibleLineCount(content);
 
   return edits.map((edit) => {
     const pos = typeof edit.pos === "string" ? edit.pos.trim() : edit.pos;
     const end = typeof edit.end === "string" ? edit.end.trim() : edit.end;
+    const parsedPos = typeof pos === "string" ? parsePublicLineRef(pos) : undefined;
+    const parsedEnd = typeof end === "string" ? parsePublicLineRef(end) : undefined;
 
-    if (/^\d+$/.test(pos) && /^\d+$/.test(end ?? "")) {
-      const startLine = Number.parseInt(pos, 10);
-      const endLine = Number.parseInt(end!, 10);
+    if (parsedPos && parsedEnd) {
+      const startLine = parsedPos.line;
+      const endLine = parsedEnd.line;
       const appendLine = visibleLineCount + 1;
 
       if (startLine === appendLine && endLine === appendLine) {
@@ -187,8 +199,8 @@ function anchorBareLineNumberEdits(
 
     return {
       ...edit,
-      pos: anchorBareLineRef(edit.pos, fileLines, visibleLineCount, "range start") ?? edit.pos,
-      end: anchorBareLineRef(edit.end, fileLines, visibleLineCount, "range end"),
+      pos: anchorPublicLineRef(edit.pos, fileLines, visibleLineCount, "range start") ?? edit.pos,
+      end: anchorPublicLineRef(edit.end, fileLines, visibleLineCount, "range end"),
     };
   });
 }
@@ -247,7 +259,7 @@ async function resolveEditTarget(
     return {
       ok: false,
       code: "E_EMPTY_FILE",
-      error: `File is empty: ${path}. The edit tool requires anchors from a read output, which an empty file cannot provide. Use the write tool to create initial content in an empty file.`,
+      error: `File is empty: ${path}. The edit tool requires an existing line reference from read output; use the write tool to create initial content in an empty file.`,
     };
   }
 

@@ -290,7 +290,7 @@ describe("file kind guards in tools", () => {
         expect(text).toContain("<LinearLayout");
         expect(text).not.toMatch(/binary file/i);
         // Text path renders line-number-prefixed lines (e.g. "1│<?xml ...").
-        expect(text).toMatch(/^\s*\d+│<\?xml/m);
+        expect(text).toMatch(/^\s*\d+[a-z]│<\?xml/m);
       },
     );
   });

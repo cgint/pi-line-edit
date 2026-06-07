@@ -1,2 +1,2 @@
-- Use read before edit when you do not have current LINE#HASH anchors for the file.
+- Use read before edit when you do not have current checked line refs like `128f` for the file.
 - If read is truncated, continue with the `offset` it suggests — do not guess unseen lines.

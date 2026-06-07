@@ -18,6 +18,7 @@ import { resolveToCwd } from "./path-utils";
 import { throwIfAborted } from "./runtime";
 import { getFileSnapshot } from "./snapshot";
 import { PACKAGE_INFO } from "./package-info";
+import { formatPublicLineRef } from "./line-ref";
 
 const READ_DESC = readFileSync(
   new URL("../tool-descriptions/read.md", import.meta.url),
@@ -75,8 +76,9 @@ function formatLineNumberRegion(
     .slice(startLine - 1, endLine)
     .map((line, index) => {
       const lineNumber = startLine + index;
-      const paddedLineNumber = String(lineNumber).padStart(lineNumberWidth, " ");
-      return `${paddedLineNumber}│${line}`;
+      const publicRef = formatPublicLineRef(fileLines, lineNumber);
+      const paddedRef = publicRef.padStart(lineNumberWidth + 1, " ");
+      return `${paddedRef}│${line}`;
     })
     .join("\n");
 }

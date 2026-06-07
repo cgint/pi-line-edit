@@ -81,8 +81,8 @@ describe("snapshotId surface (details-only after W2)", () => {
           { cwd, hasUI: true, ui: { notify() {} } } as any,
         );
 
-        expect(getText(result)).toContain(" 2│"); // diff shows context line 2
-        expect(getText(result)).toContain("+4│"); // diff shows added line 4
+        expect(getText(result)).toMatch(/ 2[a-z]│/); // diff shows context line 2
+        expect(getText(result)).toMatch(/\+4[a-z]│/); // diff shows added line 4
         expect(await readFile(path, "utf-8")).toBe(
           "one\nTWO!\nthree\nFOUR\nfive\n",
         );

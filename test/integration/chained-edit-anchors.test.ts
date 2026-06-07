@@ -29,7 +29,7 @@ describe("chained line edits", () => {
       );
 
       // Diff shows the change with line numbers
-      expect(editResult.content[0].text).toContain("+2│");
+      expect(editResult.content[0].text).toMatch(/\+2[a-z]│/);
       expect(editResult.content[0].text).toContain("│BETA");
 
       // Extract fresh line number from diff and chain another edit
@@ -43,7 +43,7 @@ describe("chained line edits", () => {
         ctx,
       );
 
-      expect(editResult2.content[0].text).toContain("+2│");
+      expect(editResult2.content[0].text).toMatch(/\+2[a-z]│/);
       expect(editResult2.content[0].text).toContain("│BETA-CHAINED");
     });
   });
@@ -72,7 +72,7 @@ describe("chained line edits", () => {
       );
 
       // Diff is always shown; no "anchors omitted" fallback
-      expect(editResult.content[0].text).toMatch(/\+\s*1│/);
+      expect(editResult.content[0].text).toMatch(/\+\s*1[a-z]│/);
       expect(editResult.content[0].text).not.toContain("Anchors omitted");
     });
   });
@@ -97,7 +97,7 @@ describe("chained line edits", () => {
         ctx,
       );
 
-      expect(editResult.content[0].text).toContain("+2│");
+      expect(editResult.content[0].text).toMatch(/\+2[a-z]│/);
       expect(editResult.content[0].text).toContain("│appended");
     });
   });
@@ -122,7 +122,7 @@ describe("chained line edits", () => {
         ctx,
       );
 
-      expect(editResult.content[0].text).toContain("+1│");
+      expect(editResult.content[0].text).toMatch(/\+1[a-z]│/);
       expect(editResult.content[0].text).toContain("│prepended");
     });
   });
@@ -150,9 +150,9 @@ describe("chained line edits", () => {
       // No empty line-numbered diff rows should appear.
       const numberedLines = editResult.content[0].text
         .split("\n")
-        .filter((line: string) => line.match(/^[+\- ]\s*\d+│.*/));
+        .filter((line: string) => line.match(/^[+\- ]\s*\d+[a-z]│.*/));
       for (const line of numberedLines) {
-        expect(line).not.toMatch(/^\s*\d+│$/);
+        expect(line).not.toMatch(/^\s*\d+[a-z]│$/);
       }
     });
   });
@@ -179,7 +179,7 @@ describe("chained line edits", () => {
       );
 
       // Diff always shown; no budget-based omission
-      expect(editResult.content[0].text).toMatch(/\+\s*2│/);
+      expect(editResult.content[0].text).toMatch(/\+\s*2[a-z]│/);
       expect(editResult.content[0].text).not.toContain("Anchors omitted");
     });
   });
@@ -207,10 +207,10 @@ describe("chained line edits", () => {
         ctx,
       );
 
-      // Plain line numbers resolve against current content, so the old line number remains usable.
+      // Bare line numbers intentionally resolve against current content; checked refs reject stale content.
       await editTool.execute(
         "e2-line-number",
-        { path: "stale.ts", edits: [{ range: [dRef, dRef], lines: ["D-AGAIN"] }] },
+        { path: "stale.ts", edits: [{ range: ["4", "4"], lines: ["D-AGAIN"] }] },
         undefined,
         undefined,
         ctx,
@@ -224,7 +224,7 @@ describe("chained line edits", () => {
         undefined,
         ctx,
       );
-      expect(aEdit.content[0].text).toContain("+1│");
+      expect(aEdit.content[0].text).toMatch(/\+1[a-z]│/);
       expect(aEdit.content[0].text).toContain("│A");
     });
   });

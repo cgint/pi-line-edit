@@ -1,17 +1,17 @@
 # pi-line-edit
 
-A [pi coding agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension for easier file edits by **plain line number ranges**.
+A [pi coding agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension for easier file edits using compact **checked line references**.
 
-This is a fork of [`@jerryan/pi-hashline-edit`](https://github.com/JerryAZR/pi-hashline-edit). It keeps the useful safety machinery (atomic writes, mutation queue, binary/image guards, previews, undo support) but changes the model-facing workflow from hash anchors to simple line numbers.
+This is a fork of [`@jerryan/pi-hashline-edit`](https://github.com/JerryAZR/pi-hashline-edit). It keeps the useful safety machinery (atomic writes, mutation queue, binary/image guards, previews, undo support) but changes the model-facing workflow from `LINE#HASH` anchors to compact refs like `128f`.
 
 ## Why
 
-The stock `edit` tool requires exact old-text matches. Hashline editing improves stale-context safety, but models can get stuck when they forget to include `LINE#HASH` anchors. This extension optimizes for reliable model behavior:
+The stock `edit` tool requires exact old-text matches. Hashline editing improves stale-context safety, but models can get stuck when they forget or miscopy `LINE#HASH` anchors. This extension optimizes for reliable model behavior:
 
-- `read` shows line numbers as `LINE│content`
-- `edit` accepts plain ranges like `["12", "15"]`
-- edit diffs show line numbers but no hashes
-- `LINE#HASH` anchors are still accepted internally for compatibility when supplied
+- `read` shows checked line refs as `LINEc│content`, e.g. `128f│content`
+- `edit` accepts checked refs like `["128f", "130q"]` and rejects them if stale
+- plain ranges like `["128", "130"]` still work as a weaker fallback
+- edit diffs return fresh checked refs for chaining subsequent edits
 
 ## Installation
 
@@ -40,9 +40,9 @@ Start a new pi session after installation. Running sessions may need `/reload` o
 Example output:
 
 ```text
- 8│function hello() {
- 9│  console.log("world");
-10│}
+ 8k│function hello() {
+ 9m│  console.log("world");
+10p│}
 ```
 
 ### Edit
@@ -53,7 +53,7 @@ Replace one line:
 {
   "path": "src/main.ts",
   "edits": [
-    { "range": ["9", "9"], "lines": ["  console.log('pi-line-edit');"] }
+    { "range": ["9m", "9m"], "lines": ["  console.log('pi-line-edit');"] }
   ]
 }
 ```
@@ -64,7 +64,7 @@ Replace a range:
 {
   "path": "src/main.ts",
   "edits": [
-    { "range": ["20", "25"], "lines": ["function foo() {", "  return 42;", "}"] }
+    { "range": ["20a", "25z"], "lines": ["function foo() {", "  return 42;", "}"] }
   ]
 }
 ```
@@ -75,29 +75,29 @@ Delete lines:
 {
   "path": "src/main.ts",
   "edits": [
-    { "range": ["30", "33"], "lines": [] }
+    { "range": ["30b", "33x"], "lines": [] }
   ]
 }
 ```
 
-All edits in a single call validate against the same pre-edit snapshot and apply bottom-up, so line numbers stay consistent across operations.
+All edits in a single call validate against the same pre-edit snapshot and apply bottom-up, so checked refs stay consistent across operations. Bare line numbers resolve against current file contents and intentionally skip checksum validation.
 
 ## Diff output
 
-Edit results use a clean line-numbered diff:
+Edit results return fresh checked refs in a clean line-numbered diff:
 
 ```diff
- 8│function hello() {
--9│  console.log("world");
-+9│  console.log("pi-line-edit");
-10│}
+ 8k│function hello() {
+-9m│  console.log("world");
++9v│  console.log("pi-line-edit");
+10p│}
 ```
 
 ## Notes
 
-- `range` values are strings because pi tool schemas handle them consistently and this preserves compatibility with upstream `LINE#HASH` anchors.
-- Plain line numbers are resolved against the current file contents at execution time.
-- `raw: true` on `read` returns plain text without line-number prefixes.
+- `range` values are strings so they can carry the optional one-letter checksum suffix.
+- Prefer copied checked refs like `128f`; plain line numbers like `128` are accepted but have weaker stale-line protection.
+- `raw: true` on `read` returns plain text without checked line prefixes.
 
 ## Credits
 

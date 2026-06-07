@@ -24,7 +24,7 @@ describe("formatHashlineReadPreview", () => {
   it("formats ordinary lines with line numbers", () => {
     const result = formatHashlineReadPreview("alpha\nbeta", { offset: 1 });
 
-    expect(result.text).toContain("1│alpha");
+    expect(result.text).toMatch(/1[a-z]│alpha/);
   });
 
   it("pads line numbers to the same width within the returned block", () => {
@@ -33,9 +33,9 @@ describe("formatHashlineReadPreview", () => {
     const result = formatHashlineReadPreview(text, { offset: 8 });
 
     expect(result.text.split("\n").slice(0, 3)).toEqual([
-      " 8│line-8",
-      " 9│line-9",
-      "10│line-10",
+      " 8o│line-8",
+      " 9u│line-9",
+      "10n│line-10",
     ]);
   });
 
@@ -50,9 +50,9 @@ describe("formatHashlineReadPreview", () => {
   it("hides the terminal newline sentinel from preview output", () => {
     const result = formatHashlineReadPreview("alpha\nbeta\n", { offset: 1 });
 
-    expect(result.text).toContain("1│alpha");
-    expect(result.text).toContain("2│beta");
-    expect(result.text).not.toContain("3│");
+    expect(result.text).toMatch(/1[a-z]│alpha/);
+    expect(result.text).toMatch(/2[a-z]│beta/);
+    expect(result.text).not.toMatch(/3[a-z]│/);
     expect(result.text).not.toContain("2 lines total");
   });
 
@@ -131,7 +131,7 @@ describe("read tool protocol", () => {
 
       expect(result.content[0].text).toContain("│alpha");
       expect(result.content[0].text).toContain("│beta");
-      expect(result.content[0].text).not.toContain("3│");
+      expect(result.content[0].text).not.toMatch(/3[a-z]│/);
     });
   });
 

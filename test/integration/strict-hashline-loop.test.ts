@@ -4,7 +4,7 @@ import register from "../../index";
 import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
 describe("line-number edit tool loop", () => {
-  it("supports read -> edit -> reuse the same line number against current content", async () => {
+  it("rejects stale checked refs while allowing bare line-number fallback", async () => {
     await withTempFile("sample.ts", "alpha\nbeta\n", async ({ cwd, path }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -21,7 +21,7 @@ describe("line-number edit tool loop", () => {
         .split("│")[0]!
         .trim();
 
-      expect(betaRef).toBe("2");
+      expect(betaRef).toMatch(/^2[a-z]$/);
 
       await editTool.execute(
         "e1",
@@ -34,19 +34,32 @@ describe("line-number edit tool loop", () => {
         ctx,
       );
 
+      await expect(
+        editTool.execute(
+          "e2-stale",
+          {
+            path: "sample.ts",
+            edits: [{ range: [betaRef, betaRef], lines: ["BETA2"] }],
+          },
+          undefined,
+          undefined,
+          ctx,
+        ),
+      ).rejects.toThrow(/\[E_STALE_LINE\]/);
+
       const secondEdit = await editTool.execute(
-        "e2",
+        "e2-bare",
         {
           path: "sample.ts",
-          edits: [{ range: [betaRef, betaRef], lines: ["BETA2"] }],
+          edits: [{ range: ["2", "2"], lines: ["BETA2"] }],
         },
         undefined,
         undefined,
         ctx,
       );
 
-      expect(secondEdit.content[0].text).toContain("-2│BETA1");
-      expect(secondEdit.content[0].text).toContain("+2│BETA2");
+      expect(secondEdit.content[0].text).toMatch(/-2[a-z]│BETA1/);
+      expect(secondEdit.content[0].text).toMatch(/\+2[a-z]│BETA2/);
       expect(await readFile(path, "utf-8")).toBe("alpha\nBETA2\n");
     });
   });

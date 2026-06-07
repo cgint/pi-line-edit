@@ -34,7 +34,7 @@ describe("computeEditPreview", () => {
       if (!("diff" in preview)) {
         return;
       }
-      expect(preview.diff).toContain("+2│");
+      expect(preview.diff).toMatch(/\+2[a-z]│/);
       expect(preview.diff).toContain("│BBB");
     });
   });

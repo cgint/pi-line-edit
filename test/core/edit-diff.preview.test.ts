@@ -5,10 +5,10 @@ describe("generateDiffString", () => {
   it("adds line-number gutters for context, addition, and deletion lines", () => {
     const diff = generateDiffString("alpha\nbeta\ngamma", "alpha\nBETA\ngamma").diff;
 
-    expect(diff).toContain(" 1│alpha");
-    expect(diff).toContain("+2│BETA");
-    expect(diff).toContain("-2│beta");
-    expect(diff).toContain(" 3│gamma");
+    expect(diff).toMatch(/ 1[a-z]│alpha/);
+    expect(diff).toMatch(/\+2[a-z]│BETA/);
+    expect(diff).toMatch(/-2[a-z]│beta/);
+    expect(diff).toMatch(/ 3[a-z]│gamma/);
   });
 });
 

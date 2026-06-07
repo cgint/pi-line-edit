@@ -264,7 +264,7 @@ describe("registerEditTool", () => {
       expect(rendered).not.toContain("Changes: +1 -1");
       expect(rendered).not.toContain("Diff preview:");
       expect(rendered).not.toContain("```diff");
-      expect(rendered).toContain(`[success]+2│BBB[/success]`);
+      expect(rendered).toMatch(/\[success\]\+2[a-z]│BBB\[\/success\]/);
       expect(rendered).not.toContain("Updated sample.txt");
       expect(rendered).not.toContain("```text");
       expect(result.details?.diff).toContain("+2");
@@ -288,8 +288,8 @@ describe("registerEditTool", () => {
       );
 
       expect(await readFile(path, "utf-8")).toBe("aaa\nbbb\nccc\nddd\n");
-      expect(result.details?.diff).toContain("+3│ccc");
-      expect(result.details?.diff).toContain("+4│ddd");
+      expect(result.details?.diff).toMatch(/\+3[a-z]│ccc/);
+      expect(result.details?.diff).toMatch(/\+4[a-z]│ddd/);
     });
   });
 

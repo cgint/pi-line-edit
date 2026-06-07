@@ -1,1 +1,1 @@
-Edit a text file by replacing plain line ranges or LINE#HASH anchors
+Edit a text file by replacing checked line refs like 128f, or plain line ranges as fallback
