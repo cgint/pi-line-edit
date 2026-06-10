@@ -112,7 +112,11 @@ describe("registerEditTool", () => {
     expect((hashlineEditToolSchema as any).type).toBe("object");
     expect((hashlineEditToolSchema as any).anyOf).toBeUndefined();
 
-    const rangeSchema = (hashlineEditToolSchema as any).properties.edits.items.properties.range;
+    const editsSchema = (hashlineEditToolSchema as any).properties.edits;
+    expect(editsSchema.minItems).toBe(1);
+    expect(editsSchema.maxItems).toBe(3);
+
+    const rangeSchema = editsSchema.items.properties.range;
     expect(Array.isArray(rangeSchema.items)).toBe(false);
     expect(rangeSchema.items.type).toBe("string");
     expect(rangeSchema.items.minLength).toBe(1);
@@ -396,7 +400,7 @@ describe("registerEditTool", () => {
           undefined,
           { cwd } as any,
         ),
-      ).rejects.toThrow(/E_TOO_MANY_EDITS/);
+      ).rejects.toThrow(/E_TOO_MANY_EDITS.*You sent 4 edits.*accepts 1-3 edits.*Retry with edits 1-3/s);
     });
   });
 

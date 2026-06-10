@@ -69,7 +69,9 @@ export const hashlineEditToolSchema = Type.Object(
   {
     path: Type.String({ description: "path" }),
     edits: Type.Array(makeEditEntrySchema(true), {
-      description: `Edits to apply to $path. Each edit replaces the inclusive line range [start, end] with lines. Prefer full read-output endpoint lines; use [] to delete.`,
+      minItems: 1,
+      maxItems: 3,
+      description: `REQUIRED: 1-3 edit entries only. Split larger changes into multiple edit calls. Each edit replaces the inclusive line range [start, end] with lines. Prefer full read-output endpoint lines; use [] to delete.`,
     }),
   },
   { additionalProperties: false },
@@ -128,7 +130,7 @@ type EditBehaviorOptions = {
 function enforceEditCountLimit(edits: Record<string, unknown>[], maxEditsPerCall: number | undefined): void {
   if (maxEditsPerCall !== undefined && edits.length > maxEditsPerCall) {
     throw new Error(
-      `[E_TOO_MANY_EDITS] The default edit tool accepts at most ${maxEditsPerCall} edits per call. Split this into smaller edit calls, or use edit_legacy if you intentionally need the old compact-ref workflow.`,
+      `[E_TOO_MANY_EDITS] You sent ${edits.length} edits. The default edit tool accepts 1-${maxEditsPerCall} edits per call. Retry with edits 1-${maxEditsPerCall} first, then send the remaining edit(s) in a second edit call.`,
     );
   }
 }
