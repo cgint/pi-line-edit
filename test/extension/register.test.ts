@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import register from "../../index";
 
 describe("extension registration", () => {
-  it("registers read/edit/write/undo tools", () => {
+  it("registers read/edit/write/undo tools by default", () => {
     const toolNames: string[] = [];
     const pi = {
       registerTool(tool: { name: string }) {

@@ -22,11 +22,21 @@ export function formatPublicLineRef(fileLines: string[], lineNumber: number): st
   return `${lineNumber}${computePublicLineChecksum(fileLines, lineNumber)}`;
 }
 
-export function parsePublicLineRef(ref: string): { line: number; checksum?: string } | undefined {
+export type PublicLineRef = {
+  line: number;
+  checksum?: string;
+  contentHint?: string;
+};
+
+export function parsePublicLineRef(ref: string): PublicLineRef | undefined {
   const core = ref.replace(/^\s*[>+\-]*\s*/, "").trim();
-  const checked = core.match(/^(\d+)([a-z])(?:\s*[│:].*)?$/);
+  const checked = core.match(/^(\d+)([a-z])(?:\s*[│|:](.*))?$/);
   if (checked) {
-    return { line: Number.parseInt(checked[1]!, 10), checksum: checked[2]! };
+    return {
+      line: Number.parseInt(checked[1]!, 10),
+      checksum: checked[2]!,
+      ...(checked[3] !== undefined ? { contentHint: checked[3]! } : {}),
+    };
   }
 
   const bare = core.match(/^(\d+)$/);

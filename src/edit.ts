@@ -30,42 +30,46 @@ import { buildChangedResponse, buildNoopResponse } from "./edit-response";
 import { setLastEdit } from "./undo";
 import { computePublicLineChecksum, getVisibleLineCount, parsePublicLineRef } from "./line-ref";
 
-const editEntrySchema = Type.Object(
-  {
-    range: Type.Array(Type.String({ minLength: 1 }), {
-      minItems: 2,
-      maxItems: 2,
-      description:
-        `Inclusive 1-based line range [start, end]. Prefer checked line refs copied from read/diff output, e.g. ["42f", "44q"]. Plain line numbers like ["42", "42"] are accepted as a weaker fallback.`,
-    }),
-    lines: Type.Array(Type.String(), {
-      description: "New content lines. Use [] to delete.",
-    }),
-    intent: Type.String({
-      minLength: 1,
-      description: "Required non-empty statement of what this edit is trying to accomplish.",
-    }),
-    rationale: Type.String({
-      minLength: 1,
-      description: "Required non-empty explanation of why this edit is appropriate.",
-    }),
-    confidence: Type.Integer({
-      minimum: 0,
-      maximum: 10,
-      description: "Required integer self-assessed confidence score from 0 to 10. A score of 10 must be justified by the confidenceReason argument.",
-    }),
-    confidenceReason: Type.String({
-      minLength: 1,
-      description: "Required non-empty argument for the confidence score, including evidence and uncertainty. For confidence 10, explain the concrete verification, exact mechanical nature, or exact local pattern that justifies maximum confidence.",
-    }),
-  },
-  { additionalProperties: false },
-);
+function makeEditEntrySchema(fullLineDefault: boolean) {
+  return Type.Object(
+    {
+      range: Type.Array(Type.String({ minLength: 1 }), {
+        minItems: 2,
+        maxItems: 2,
+        description: fullLineDefault
+          ? `Inclusive line range [start, end]. Prefer full checked lines copied from read/diff output, e.g. ["42f│const value = 1;", "44q│}"]. Compact checked refs like "42f" and plain line numbers are accepted as fallbacks.`
+          : `Inclusive 1-based line range [start, end]. Prefer checked line refs copied from read/diff output, e.g. ["42f", "44q"]. Plain line numbers like ["42", "42"] are accepted as a weaker fallback.`,
+      }),
+      lines: Type.Array(Type.String(), {
+        description: "New content lines. Use [] to delete.",
+      }),
+      intent: Type.String({
+        minLength: 1,
+        description: "Required non-empty statement of what this edit is trying to accomplish.",
+      }),
+      rationale: Type.String({
+        minLength: 1,
+        description: "Required non-empty explanation of why this edit is appropriate.",
+      }),
+      confidence: Type.Integer({
+        minimum: 0,
+        maximum: 10,
+        description: "Required integer self-assessed confidence score from 0 to 10. A score of 10 must be justified by the confidenceReason argument.",
+      }),
+      confidenceReason: Type.String({
+        minLength: 1,
+        description: "Required non-empty argument for the confidence score, including evidence and uncertainty. For confidence 10, explain the concrete verification, exact mechanical nature, or exact local pattern that justifies maximum confidence.",
+      }),
+    },
+    { additionalProperties: false },
+  );
+}
+
 export const hashlineEditToolSchema = Type.Object(
   {
     path: Type.String({ description: "path" }),
-    edits: Type.Array(editEntrySchema, {
-      description: `Edits to apply to $path. Each edit replaces the inclusive line range [start, end] with lines. Use the same line twice for single-line; use [] to delete.`,
+    edits: Type.Array(makeEditEntrySchema(true), {
+      description: `Edits to apply to $path. Each edit replaces the inclusive line range [start, end] with lines. Prefer full read-output endpoint lines; use [] to delete.`,
     }),
   },
   { additionalProperties: false },
@@ -99,11 +103,39 @@ const EDIT_DESC = readFileSync(
   "utf-8",
 ).trim();
 
+const EDIT_LEGACY_DESC = readFileSync(
+  new URL("../tool-descriptions/edit-legacy.md", import.meta.url),
+  "utf-8",
+).trim();
+
 const EDIT_PROMPT_SNIPPET = readFileSync(
   new URL("../tool-descriptions/edit-snippet.md", import.meta.url),
   "utf-8",
 ).trim();
 
+const EDIT_LEGACY_PROMPT_SNIPPET = readFileSync(
+  new URL("../tool-descriptions/edit-legacy-snippet.md", import.meta.url),
+  "utf-8",
+).trim();
+
+const DEFAULT_MAX_EDITS_PER_CALL = 3;
+
+type EditBehaviorOptions = {
+  validateContentHint: boolean;
+  maxEditsPerCall?: number;
+};
+
+function enforceEditCountLimit(edits: Record<string, unknown>[], maxEditsPerCall: number | undefined): void {
+  if (maxEditsPerCall !== undefined && edits.length > maxEditsPerCall) {
+    throw new Error(
+      `[E_TOO_MANY_EDITS] The default edit tool accepts at most ${maxEditsPerCall} edits per call. Split this into smaller edit calls, or use edit_legacy if you intentionally need the old compact-ref workflow.`,
+    );
+  }
+}
+
+function normalizedContentHint(value: string): string {
+  return value.trim();
+}
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -112,7 +144,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 // Field-type and schema validation are AJV's responsibility;
 // only prevent crashes from missing required top-level fields.
 // Path existence is checked in execute() once CWD is available.
-export function assertEditRequest(request: unknown): asserts request is EditRequestParams {
+export function assertEditRequest(
+  request: unknown,
+  options: { maxEditsPerCall?: number } = {},
+): asserts request is EditRequestParams {
   if (!isRecord(request)) {
     throw new Error("Edit request must be an object.");
   }
@@ -122,6 +157,7 @@ export function assertEditRequest(request: unknown): asserts request is EditRequ
   if (!Array.isArray(request.edits) || request.edits.length === 0) {
     throw new Error('Edit request requires a non-empty "edits" array.');
   }
+  enforceEditCountLimit(request.edits as Record<string, unknown>[], options.maxEditsPerCall);
 }
 
 export function normalizeEditItems(edits: Record<string, unknown>[]): HashlineToolEdit[] {
@@ -136,12 +172,13 @@ function anchorPublicLineRef(
   fileLines: string[],
   visibleLineCount: number,
   label: "range start" | "range end",
+  options: Pick<EditBehaviorOptions, "validateContentHint">,
 ): string | undefined {
   if (typeof ref !== "string") return ref;
   const parsed = parsePublicLineRef(ref);
   if (!parsed) return ref;
 
-  const { line, checksum } = parsed;
+  const { line, checksum, contentHint } = parsed;
   if (line < 1 || line > visibleLineCount) {
     throw new Error(
       `[E_RANGE_OOB] ${label} line ${line} does not exist (file has ${visibleLineCount} lines). Plain line-number ranges must reference existing lines, except ["${visibleLineCount + 1}", "${visibleLineCount + 1}"] which appends at end of file.`,
@@ -157,12 +194,23 @@ function anchorPublicLineRef(
     }
   }
 
+  if (options.validateContentHint && contentHint !== undefined) {
+    const expected = normalizedContentHint(contentHint);
+    const actual = normalizedContentHint(fileLines[line - 1] ?? "");
+    if (expected !== actual) {
+      throw new Error(
+        `[E_LINE_CONTENT_MISMATCH] ${label} ${line}${checksum ?? ""} includes endpoint content that does not match current line ${line} after trimming. Given: ${JSON.stringify(expected)}. Current: ${JSON.stringify(actual)}. Re-read this region or use compact ref "${line}${checksum ?? ""}" if you intentionally do not want content checking.`,
+      );
+    }
+  }
+
   return `${line}${ANCHOR_SEP}${computeLineHash(fileLines, line - 1)}`;
 }
 
 function anchorBareLineNumberEdits(
   edits: HashlineToolEdit[],
   content: string,
+  options: Pick<EditBehaviorOptions, "validateContentHint">,
 ): HashlineToolEdit[] {
   const fileLines = content.split("\n");
   const visibleLineCount = getVisibleLineCount(content);
@@ -199,8 +247,8 @@ function anchorBareLineNumberEdits(
 
     return {
       ...edit,
-      pos: anchorPublicLineRef(edit.pos, fileLines, visibleLineCount, "range start") ?? edit.pos,
-      end: anchorPublicLineRef(edit.end, fileLines, visibleLineCount, "range end"),
+      pos: anchorPublicLineRef(edit.pos, fileLines, visibleLineCount, "range start", options) ?? edit.pos,
+      end: anchorPublicLineRef(edit.end, fileLines, visibleLineCount, "range end", options),
     };
   });
 }
@@ -434,9 +482,13 @@ function formatEditCall(
 export async function computeEditPreview(
   request: unknown,
   cwd: string,
+  options: EditBehaviorOptions = {
+    validateContentHint: true,
+    maxEditsPerCall: DEFAULT_MAX_EDITS_PER_CALL,
+  },
 ): Promise<EditPreview> {
   try {
-    assertEditRequest(request);
+    assertEditRequest(request, options);
   } catch (error: unknown) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
@@ -454,7 +506,7 @@ export async function computeEditPreview(
 
   try {
     const resolved = resolveEditAnchors(
-      anchorBareLineNumberEdits(toolEdits, originalNormalized),
+      anchorBareLineNumberEdits(toolEdits, originalNormalized, options),
     );
     const result = applyHashlineEdits(originalNormalized, resolved).content;
 
@@ -476,194 +528,226 @@ type EditToolDefinition = ToolDefinition<
   EditRenderState
 > & { renderShell?: "default" | "self" };
 
-const editToolDefinition: EditToolDefinition = {
-  name: "edit",
-  label: "Edit",
-  description: EDIT_DESC,
-  parameters: hashlineEditToolSchema,
-  promptSnippet: EDIT_PROMPT_SNIPPET,
-  // Force the default tool shell (Box with pending/success/error background) so
-  // we don't inherit renderShell: "self" from the built-in edit tool of the
-  // same name, which would drop the shared background color block.
-  renderShell: "default",
-  renderCall(args, theme, context) {
-    const previewInput = getRenderablePreviewInput(args);
-    if (context.executionStarted) {
-      context.state.argsKey = undefined;
-      context.state.preview = undefined;
-      context.state.previewGeneration = (context.state.previewGeneration ?? 0) + 1;
-    } else if (!context.argsComplete || !previewInput) {
-      context.state.argsKey = undefined;
-      context.state.preview = undefined;
-      context.state.previewGeneration = (context.state.previewGeneration ?? 0) + 1;
-    } else {
-      const argsKey = JSON.stringify(previewInput);
-      if (context.state.argsKey !== argsKey) {
-        context.state.argsKey = argsKey;
+function makeEditToolDefinition(args: {
+  name: string;
+  label: string;
+  description: string;
+  promptSnippet: string;
+  behavior: EditBehaviorOptions;
+}): EditToolDefinition {
+  return {
+    name: args.name,
+    label: args.label,
+    description: args.description,
+    parameters: hashlineEditToolSchema,
+    promptSnippet: args.promptSnippet,
+    // Force the default tool shell (Box with pending/success/error background) so
+    // we don't inherit renderShell: "self" from the built-in edit tool of the
+    // same name, which would drop the shared background color block.
+    renderShell: "default",
+    renderCall(callArgs, theme, context) {
+      const previewInput = getRenderablePreviewInput(callArgs);
+      if (context.executionStarted) {
+        context.state.argsKey = undefined;
         context.state.preview = undefined;
-        const previewGeneration = (context.state.previewGeneration ?? 0) + 1;
-        context.state.previewGeneration = previewGeneration;
-        computeEditPreview(previewInput, context.cwd)
-          .then((preview) => {
-            if (
-              context.state.argsKey === argsKey &&
-              context.state.previewGeneration === previewGeneration
-            ) {
-              context.state.preview = preview;
-              context.invalidate();
-            }
-          })
-          .catch((err: unknown) => {
-            if (
-              context.state.argsKey === argsKey &&
-              context.state.previewGeneration === previewGeneration
-            ) {
-              context.state.preview = {
-                error: err instanceof Error ? err.message : String(err),
-              };
-              context.invalidate();
-            }
-          });
+        context.state.previewGeneration = (context.state.previewGeneration ?? 0) + 1;
+      } else if (!context.argsComplete || !previewInput) {
+        context.state.argsKey = undefined;
+        context.state.preview = undefined;
+        context.state.previewGeneration = (context.state.previewGeneration ?? 0) + 1;
+      } else {
+        const argsKey = JSON.stringify(previewInput);
+        if (context.state.argsKey !== argsKey) {
+          context.state.argsKey = argsKey;
+          context.state.preview = undefined;
+          const previewGeneration = (context.state.previewGeneration ?? 0) + 1;
+          context.state.previewGeneration = previewGeneration;
+          computeEditPreview(previewInput, context.cwd, args.behavior)
+            .then((preview) => {
+              if (
+                context.state.argsKey === argsKey &&
+                context.state.previewGeneration === previewGeneration
+              ) {
+                context.state.preview = preview;
+                context.invalidate();
+              }
+            })
+            .catch((err: unknown) => {
+              if (
+                context.state.argsKey === argsKey &&
+                context.state.previewGeneration === previewGeneration
+              ) {
+                context.state.preview = {
+                  error: err instanceof Error ? err.message : String(err),
+                };
+                context.invalidate();
+              }
+            });
+        }
       }
-    }
-    const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-    text.setText(
-      formatEditCall(
-        getRenderablePreviewInput(args) ?? undefined,
-        context.state as EditRenderState,
-        context.expanded,
-        theme,
-      ),
-    );
-    return text;
-  },
-
-  renderResult(result, { isPartial }, theme, context) {
-    if (isPartial) {
       const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-      text.setText(theme.fg("warning", "Editing..."));
+      text.setText(
+        formatEditCall(
+          getRenderablePreviewInput(callArgs) ?? undefined,
+          context.state as EditRenderState,
+          context.expanded,
+          theme,
+        ),
+      );
       return text;
-    }
+    },
 
-    const typedResult = result as {
-      content?: Array<{ type: string; text?: string }>;
-      details?: HashlineEditToolDetails;
-    };
-    const renderedText = getRenderedEditTextContent(typedResult);
+    renderResult(result, { isPartial }, theme, context) {
+      if (isPartial) {
+        const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+        text.setText(theme.fg("warning", "Editing..."));
+        return text;
+      }
 
-    const renderState = context.state as EditRenderState | undefined;
-    const previewBeforeResult = renderState?.preview;
-    if (renderState) {
-      renderState.preview = undefined;
-      renderState.previewGeneration = (renderState.previewGeneration ?? 0) + 1;
-    }
+      const typedResult = result as {
+        content?: Array<{ type: string; text?: string }>;
+        details?: HashlineEditToolDetails;
+      };
+      const renderedText = getRenderedEditTextContent(typedResult);
 
-    if (context.isError) {
+      const renderState = context.state as EditRenderState | undefined;
+      const previewBeforeResult = renderState?.preview;
+      if (renderState) {
+        renderState.preview = undefined;
+        renderState.previewGeneration = (renderState.previewGeneration ?? 0) + 1;
+      }
+
+      if (context.isError) {
+        if (!renderedText) {
+          return new Text("", 0, 0);
+        }
+        const text = context.lastComponent instanceof Text
+          ? context.lastComponent
+          : new Text("", 0, 0);
+        text.setText(`\n${theme.fg("error", renderedText)}`);
+        return text;
+      }
+
+      if (isAppliedChangedResult(typedResult.details)) {
+        const appliedChangedText = buildAppliedChangedResultText(
+          renderedText,
+          typedResult.details,
+          previewBeforeResult,
+          theme,
+        );
+        if (!appliedChangedText) {
+          return new Text("", 0, 0);
+        }
+        const text = context.lastComponent instanceof Text
+          ? context.lastComponent
+          : new Text("", 0, 0);
+        text.setText(appliedChangedText);
+        return text;
+      }
+
       if (!renderedText) {
         return new Text("", 0, 0);
       }
+
       const text = context.lastComponent instanceof Text
         ? context.lastComponent
         : new Text("", 0, 0);
-      text.setText(`\n${theme.fg("error", renderedText)}`);
+      text.setText(renderedText);
       return text;
-    }
+    },
 
-    if (isAppliedChangedResult(typedResult.details)) {
-      const appliedChangedText = buildAppliedChangedResultText(
-        renderedText,
-        typedResult.details,
-        previewBeforeResult,
-        theme,
-      );
-      if (!appliedChangedText) {
-        return new Text("", 0, 0);
-      }
-      const text = context.lastComponent instanceof Text
-        ? context.lastComponent
-        : new Text("", 0, 0);
-      text.setText(appliedChangedText);
-      return text;
-    }
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      assertEditRequest(params, args.behavior);
 
-    if (!renderedText) {
-      return new Text("", 0, 0);
-    }
-
-    const text = context.lastComponent instanceof Text
-      ? context.lastComponent
-      : new Text("", 0, 0);
-    text.setText(renderedText);
-    return text;
-  },
-
-  async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-    assertEditRequest(params);
-
-    const path = (params as EditRequestParams).path;
-    const absolutePath = resolveToCwd(path, ctx.cwd);
-    const toolEdits = normalizeEditItems(
-      (params as EditRequestParams).edits,
-    );
-
-    const mutationTargetPath = await resolveMutationTargetPath(absolutePath);
-    return withFileMutationQueue(mutationTargetPath, async () => {
-      throwIfAborted(signal);
-      const target = await resolveEditTarget(absolutePath, path, constants.R_OK | constants.W_OK);
-      if (!target.ok) {
-        const prefix = target.code ? `[${target.code}] ` : "";
-        throw new Error(`${prefix}${target.error}`);
-      }
-      const { bom, normalized: originalNormalized, ending: originalEnding } = target;
-
-      const resolved = resolveEditAnchors(
-        anchorBareLineNumberEdits(toolEdits, originalNormalized),
+      const path = (params as EditRequestParams).path;
+      const absolutePath = resolveToCwd(path, ctx.cwd);
+      const toolEdits = normalizeEditItems(
+        (params as EditRequestParams).edits,
       );
 
-      const anchorResult = applyHashlineEdits(originalNormalized, resolved, signal);
-      const result = anchorResult.content;
-      const warnings = anchorResult.warnings;
-      const originalLineCount = originalNormalized.split("\n").length - (originalNormalized.endsWith("\n") ? 1 : 0);
-      if (result.length === 0 && originalLineCount > 50) {
-        throw new Error(
-          "[E_WOULD_EMPTY] This edit would delete the entire file. The edit tool does not allow full-file deletion for files with more than 50 lines. If you truly intend to clear the file, use the write tool to overwrite it with an empty string.",
+      const mutationTargetPath = await resolveMutationTargetPath(absolutePath);
+      return withFileMutationQueue(mutationTargetPath, async () => {
+        throwIfAborted(signal);
+        const target = await resolveEditTarget(absolutePath, path, constants.R_OK | constants.W_OK);
+        if (!target.ok) {
+          const prefix = target.code ? `[${target.code}] ` : "";
+          throw new Error(`${prefix}${target.error}`);
+        }
+        const { bom, normalized: originalNormalized, ending: originalEnding } = target;
+
+        const resolved = resolveEditAnchors(
+          anchorBareLineNumberEdits(toolEdits, originalNormalized, args.behavior),
         );
-      }
-      const noopEdits = anchorResult.noopEdits;
-      const editsAttempted = toolEdits.length;
 
-      if (originalNormalized === result) {
-        const noopSnapshotId = (await getFileSnapshot(absolutePath)).snapshotId;
-        return buildNoopResponse({
+        const anchorResult = applyHashlineEdits(originalNormalized, resolved, signal);
+        const result = anchorResult.content;
+        const warnings = anchorResult.warnings;
+        const originalLineCount = originalNormalized.split("\n").length - (originalNormalized.endsWith("\n") ? 1 : 0);
+        if (result.length === 0 && originalLineCount > 50) {
+          throw new Error(
+            "[E_WOULD_EMPTY] This edit would delete the entire file. The edit tool does not allow full-file deletion for files with more than 50 lines. If you truly intend to clear the file, use the write tool to overwrite it with an empty string.",
+          );
+        }
+        const noopEdits = anchorResult.noopEdits;
+        const editsAttempted = toolEdits.length;
+
+        if (originalNormalized === result) {
+          const noopSnapshotId = (await getFileSnapshot(absolutePath)).snapshotId;
+          return buildNoopResponse({
+            path,
+            noopEdits,
+            originalNormalized,
+            snapshotId: noopSnapshotId,
+            editsAttempted,
+            warnings,
+          });
+        }
+        setLastEdit({ path, previousContent: originalNormalized });
+        throwIfAborted(signal);
+        await writeFileAtomically(
+          absolutePath,
+          bom + restoreLineEndings(result, originalEnding),
+        );
+        const updatedSnapshotId = (await getFileSnapshot(absolutePath)).snapshotId;
+
+        return buildChangedResponse({
           path,
-          noopEdits,
           originalNormalized,
-          snapshotId: noopSnapshotId,
-          editsAttempted,
+          result,
           warnings,
+          snapshotId: updatedSnapshotId,
+          editsAttempted,
+          noopEditsCount: noopEdits?.length ?? 0,
         });
-      }
-      setLastEdit({ path, previousContent: originalNormalized });
-      throwIfAborted(signal);
-      await writeFileAtomically(
-        absolutePath,
-        bom + restoreLineEndings(result, originalEnding),
-      );
-      const updatedSnapshotId = (await getFileSnapshot(absolutePath)).snapshotId;
-
-      return buildChangedResponse({
-        path,
-        originalNormalized,
-        result,
-        warnings,
-        snapshotId: updatedSnapshotId,
-        editsAttempted,
-        noopEditsCount: noopEdits?.length ?? 0,
       });
-    });
+    },
+  };
+}
+
+const editToolDefinition: EditToolDefinition = makeEditToolDefinition({
+  name: "edit",
+  label: "Edit",
+  description: EDIT_DESC,
+  promptSnippet: EDIT_PROMPT_SNIPPET,
+  behavior: {
+    validateContentHint: true,
+    maxEditsPerCall: DEFAULT_MAX_EDITS_PER_CALL,
   },
-};
+});
+
+const legacyEditToolDefinition: EditToolDefinition = makeEditToolDefinition({
+  name: "edit_legacy",
+  label: "Edit Legacy",
+  description: EDIT_LEGACY_DESC,
+  promptSnippet: EDIT_LEGACY_PROMPT_SNIPPET,
+  behavior: {
+    validateContentHint: false,
+  },
+});
 
 export function registerEditTool(pi: ExtensionAPI): void {
   pi.registerTool(editToolDefinition);
+  if (process.env.PI_LINE_EDIT_REGISTER_LEGACY === "1") {
+    pi.registerTool(legacyEditToolDefinition);
+  }
 }

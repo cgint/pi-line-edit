@@ -7,6 +7,7 @@ import {
   registerEditTool,
 } from "../../src/edit";
 import { computeLineHash } from "../../src/hashline";
+import { computePublicLineChecksum } from "../../src/line-ref";
 import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
 describe("assertEditRequest", () => {
@@ -325,6 +326,116 @@ describe("registerEditTool", () => {
         ),
       ).rejects.not.toThrow(/missing hash|LINE#HASH/i);
     });
+  });
+  it("accepts full endpoint lines and pipe separators with trimmed content matching", async () => {
+    await withTempFile("sample.txt", "aaa\n   bbb\nccc\n", async ({ cwd, path }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+      const lines = ["aaa", "   bbb", "ccc"];
+      const ref = `2${computePublicLineChecksum(lines, 2)}|bbb`;
+
+      await editTool.execute(
+        "e1",
+        {
+          path: "sample.txt",
+          edits: [{ range: [ref, ref], lines: ["   BBB"] }],
+        },
+        undefined,
+        undefined,
+        { cwd } as any,
+      );
+
+      expect(await readFile(path, "utf-8")).toBe("aaa\n   BBB\nccc\n");
+    });
+  });
+
+  it("rejects default full endpoint lines when endpoint content points at the wrong line", async () => {
+    await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd, path }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+      const lines = ["aaa", "bbb", "ccc"];
+      const ref = `2${computePublicLineChecksum(lines, 2)}│ccc`;
+
+      await expect(
+        editTool.execute(
+          "e1",
+          {
+            path: "sample.txt",
+            edits: [{ range: [ref, ref], lines: ["BBB"] }],
+          },
+          undefined,
+          undefined,
+          { cwd } as any,
+        ),
+      ).rejects.toThrow(/E_LINE_CONTENT_MISMATCH/);
+      expect(await readFile(path, "utf-8")).toBe("aaa\nbbb\nccc\n");
+    });
+  });
+
+  it("limits the default edit tool to three edit entries per call", async () => {
+    await withTempFile("sample.txt", "a\nb\nc\nd\n", async ({ cwd }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+
+      await expect(
+        editTool.execute(
+          "e1",
+          {
+            path: "sample.txt",
+            edits: [
+              { range: ["1", "1"], lines: ["A"] },
+              { range: ["2", "2"], lines: ["B"] },
+              { range: ["3", "3"], lines: ["C"] },
+              { range: ["4", "4"], lines: ["D"] },
+            ],
+          },
+          undefined,
+          undefined,
+          { cwd } as any,
+        ),
+      ).rejects.toThrow(/E_TOO_MANY_EDITS/);
+    });
+  });
+
+  it("keeps legacy edit behavior without endpoint content validation or the default edit-count limit", async () => {
+    const previous = process.env.PI_LINE_EDIT_REGISTER_LEGACY;
+    process.env.PI_LINE_EDIT_REGISTER_LEGACY = "1";
+    try {
+      await withTempFile("sample.txt", "aaa\nbbb\nccc\nddd\n", async ({ cwd, path }) => {
+        const { pi, getTool } = makeFakePiRegistry();
+        registerEditTool(pi);
+        const legacyEditTool = getTool("edit_legacy");
+        const lines = ["aaa", "bbb", "ccc", "ddd"];
+        const bRefWithWrongContent = `2${computePublicLineChecksum(lines, 2)}│ccc`;
+
+        await legacyEditTool.execute(
+          "e1",
+          {
+            path: "sample.txt",
+            edits: [
+              { range: ["1", "1"], lines: ["AAA"] },
+              { range: [bRefWithWrongContent, bRefWithWrongContent], lines: ["BBB"] },
+              { range: ["3", "3"], lines: ["CCC"] },
+              { range: ["4", "4"], lines: ["DDD"] },
+            ],
+          },
+          undefined,
+          undefined,
+          { cwd } as any,
+        );
+
+        expect(await readFile(path, "utf-8")).toBe("AAA\nBBB\nCCC\nDDD\n");
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PI_LINE_EDIT_REGISTER_LEGACY;
+      } else {
+        process.env.PI_LINE_EDIT_REGISTER_LEGACY = previous;
+      }
+    }
   });
 });
   it("rejects edits on empty files with E_EMPTY_FILE", async () => {
