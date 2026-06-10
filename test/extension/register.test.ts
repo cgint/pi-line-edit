@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import register from "../../index";
 
 describe("extension registration", () => {
-  it("registers read/edit tools", () => {
+  it("registers read/edit/write/undo tools", () => {
     const toolNames: string[] = [];
     const pi = {
       registerTool(tool: { name: string }) {
@@ -13,6 +13,6 @@ describe("extension registration", () => {
 
     register(pi);
 
-    expect(toolNames.sort()).toEqual(["edit", "read", "undo"]);
+    expect(toolNames.sort()).toEqual(["edit", "read", "undo", "write"]);
   });
 });

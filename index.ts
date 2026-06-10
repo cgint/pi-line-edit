@@ -2,10 +2,12 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerEditTool } from "./src/edit";
 import { registerReadTool } from "./src/read";
 import { registerUndoTool, setCurrentTurn } from "./src/undo";
+import { registerWriteTool } from "./src/write";
 
 export default function (pi: ExtensionAPI): void {
   registerReadTool(pi);
   registerEditTool(pi);
+  registerWriteTool(pi);
   registerUndoTool(pi);
 
   pi.on("turn_start", async (event) => {
