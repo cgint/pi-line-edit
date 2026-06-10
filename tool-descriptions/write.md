@@ -1,21 +1,17 @@
 Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.
 
-Writes must include provenance metadata:
+Writes must include concise provenance metadata:
 ```json
 {
   "path": "src/main.ts",
   "content": "export const value = 42;\n",
-  "intent": "Create the module requested by the user.",
-  "rationale": "The file does not exist yet and the requested implementation needs this module.",
-  "confidence": 8,
-  "confidenceReason": "The content is a direct implementation of the requested module; tests have not been run yet."
+  "intent": "Create the module required by the requested feature.",
+  "rationale": "This file does not exist yet, and the feature needs this exported value."
 }
 ```
 
 Fields:
 - `path` — file to create or overwrite.
 - `content` — complete file content to write.
-- `intent` — required non-empty statement of what this write is trying to accomplish.
-- `rationale` — required non-empty explanation of why this write is appropriate.
-- `confidence` — required integer self-assessed confidence score from 0 to 10. A confidence of 10 must be justified with concrete verification, exact mechanical content, or an exact local pattern.
-- `confidenceReason` — required non-empty argument for the confidence score, including evidence and uncertainty.
+- `intent` — required concise statement of the semantic goal this write serves. Do not merely restate that the file is being written.
+- `rationale` — required concise justification for this write, focusing on user requirements, evidence, constraints, or assumptions not obvious from the content.

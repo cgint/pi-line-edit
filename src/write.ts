@@ -24,20 +24,11 @@ export const writeToolSchema = Type.Object(
     }),
     intent: Type.String({
       minLength: 1,
-      description: "Required non-empty statement of what this write is trying to accomplish.",
+      description: "Required concise semantic goal this write serves; do not merely restate that the file is being written.",
     }),
     rationale: Type.String({
       minLength: 1,
-      description: "Required non-empty explanation of why this write is appropriate.",
-    }),
-    confidence: Type.Integer({
-      minimum: 0,
-      maximum: 10,
-      description: "Required integer self-assessed confidence score from 0 to 10. A score of 10 must be justified by the confidenceReason argument.",
-    }),
-    confidenceReason: Type.String({
-      minLength: 1,
-      description: "Required non-empty argument for the confidence score, including evidence and uncertainty. For confidence 10, explain the concrete verification, exact mechanical nature, or exact local pattern that justifies maximum confidence.",
+      description: "Required concise justification for this write, focusing on user requirements, evidence, constraints, or assumptions not obvious from the content.",
     }),
   },
   { additionalProperties: false },
@@ -48,8 +39,6 @@ type WriteRequestParams = {
   content: string;
   intent: string;
   rationale: string;
-  confidence: number;
-  confidenceReason: string;
 };
 
 export function assertWriteRequest(request: unknown): asserts request is WriteRequestParams {
@@ -73,27 +62,14 @@ function formatWriteProvenance(
 
   const intent = typeof args.intent === "string" ? args.intent : undefined;
   const rationale = typeof args.rationale === "string" ? args.rationale : undefined;
-  const confidence = typeof args.confidence === "number" ? args.confidence : undefined;
-  const confidenceReason = typeof args.confidenceReason === "string" ? args.confidenceReason : undefined;
 
-  if (
-    intent === undefined &&
-    rationale === undefined &&
-    confidence === undefined &&
-    confidenceReason === undefined
-  ) {
+  if (intent === undefined && rationale === undefined) {
     return undefined;
   }
 
-  const header = confidence !== undefined
-    ? `Write confidence: ${confidence}/10`
-    : "Write provenance";
-  const lines = [`${theme.bold(header)}`];
+  const lines = [`${theme.bold("Write provenance")}`];
   if (intent !== undefined) lines.push(`  Intent: ${intent}`);
   if (rationale !== undefined) lines.push(`  Rationale: ${rationale}`);
-  if (confidenceReason !== undefined) {
-    lines.push(`  Confidence reason: ${confidenceReason}`);
-  }
 
   return `${theme.fg("toolOutput", theme.bold("Write provenance:"))}\n${lines.join("\n")}\n--------------`;
 }

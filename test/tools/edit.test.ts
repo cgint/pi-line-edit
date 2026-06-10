@@ -34,10 +34,8 @@ describe("registerEditTool", () => {
           {
             range: ["1#AB", "1#AB"],
             lines: ["x"],
-            intent: "Replace the target line with x.",
-            rationale: "The test exercises the published hashline edit payload.",
-            confidence: 8,
-            confidenceReason: "The payload is a direct schema fixture with valid required fields.",
+            intent: "Make the target line contain the expected fixture value.",
+            rationale: "This exercises the published hashline edit payload with the required provenance fields.",
           },
         ],
       }),
@@ -55,10 +53,8 @@ describe("registerEditTool", () => {
           {
             after: "1#AB",
             lines: ["x"],
-            intent: "Append x after the target line.",
-            rationale: "This intentionally checks the unsupported append shape.",
-            confidence: 8,
-            confidenceReason: "The payload is expected to fail because after is not published.",
+            intent: "Attempt an append-style edit shape.",
+            rationale: "This intentionally checks that unsupported append payloads remain rejected.",
           },
         ],
       }),
@@ -71,41 +67,35 @@ describe("registerEditTool", () => {
           {
             before: "1#AB",
             lines: ["x"],
-            intent: "Prepend x before the target line.",
-            rationale: "This intentionally checks the unsupported prepend shape.",
-            confidence: 8,
-            confidenceReason: "The payload is expected to fail because before is not published.",
+            intent: "Attempt a prepend-style edit shape.",
+            rationale: "This intentionally checks that unsupported prepend payloads remain rejected.",
           },
         ],
       }),
     ).toBe(false);
   });
 
-  it("requires non-empty provenance metadata and bounded integer confidence", () => {
+  it("requires non-empty intent and rationale provenance metadata", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(hashlineEditToolSchema as any);
     const validEdit = {
       range: ["1#AB", "1#AB"],
       lines: ["x"],
-      intent: "Replace the target line with x.",
-      rationale: "The caller requested this exact replacement.",
-      confidence: 8,
-      confidenceReason: "The edit is a direct replacement fixture with all required fields present.",
+      intent: "Make the target line contain the expected fixture value.",
+      rationale: "The caller requested this value and the fixture isolates the target line.",
     };
 
-    for (const key of ["intent", "rationale", "confidence", "confidenceReason"] as const) {
+    expect(validate({ path: "a.ts", edits: [validEdit] })).toBe(true);
+
+    for (const key of ["intent", "rationale"] as const) {
       const edit = { ...validEdit };
       delete edit[key];
       expect(validate({ path: "a.ts", edits: [edit] })).toBe(false);
-    }
-
-    for (const key of ["intent", "rationale", "confidenceReason"] as const) {
       expect(validate({ path: "a.ts", edits: [{ ...validEdit, [key]: "" }] })).toBe(false);
     }
 
-    expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidence: -1 }] })).toBe(false);
-    expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidence: 11 }] })).toBe(false);
-    expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidence: 7.5 }] })).toBe(false);
+    expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidence: 8 }] })).toBe(false);
+    expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidenceReason: "obsolete" }] })).toBe(false);
   });
 
   it("publishes an OpenAI-compatible object schema for pi tool registration", () => {
@@ -126,10 +116,8 @@ describe("registerEditTool", () => {
     const editProperties = (hashlineEditToolSchema as any).properties.edits.items.properties;
     expect(editProperties.intent.minLength).toBe(1);
     expect(editProperties.rationale.minLength).toBe(1);
-    expect(editProperties.confidence.type).toBe("integer");
-    expect(editProperties.confidence.minimum).toBe(0);
-    expect(editProperties.confidence.maximum).toBe(10);
-    expect(editProperties.confidenceReason.minLength).toBe(1);
+    expect(editProperties.confidence).toBeUndefined();
+    expect(editProperties.confidenceReason).toBeUndefined();
   });
 
   it("registers the edit tool without a prepareArguments shim", () => {
@@ -170,10 +158,8 @@ describe("registerEditTool", () => {
           {
             range: ["1#AB", "1#AB"],
             lines: ["hello"],
-            intent: "Replace the greeting line.",
-            rationale: "The requested output uses the new greeting.",
-            confidence: 8,
-            confidenceReason: "The replacement is localized and directly requested.",
+            intent: "Replace the sample greeting with the requested text.",
+            rationale: "The visible call should show only the required provenance fields for this edit.",
           },
         ],
       },
@@ -190,10 +176,10 @@ describe("registerEditTool", () => {
 
     const rendered = component.render(200).join("\n");
     expect(rendered).toContain("Edit provenance:");
-    expect(rendered).toContain("Edit 1 - Confidence: 8/10");
-    expect(rendered).toContain("Intent: Replace the greeting line.");
-    expect(rendered).toContain("Rationale: The requested output uses the new greeting.");
-    expect(rendered).toContain("Confidence reason: The replacement is localized and directly requested.");
+    expect(rendered).toContain("Edit 1");
+    expect(rendered).toContain("Intent: Replace the sample greeting with the requested text.");
+    expect(rendered).toContain("Rationale: The visible call should show only the required provenance fields for this edit.");
+    expect(rendered).not.toContain("Confidence");
     expect(rendered).toContain("--------------");
   });
 

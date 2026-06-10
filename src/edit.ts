@@ -45,20 +45,11 @@ function makeEditEntrySchema(fullLineDefault: boolean) {
       }),
       intent: Type.String({
         minLength: 1,
-        description: "Required non-empty statement of what this edit is trying to accomplish.",
+        description: "Required concise semantic goal this edit serves; do not merely restate the literal line change.",
       }),
       rationale: Type.String({
         minLength: 1,
-        description: "Required non-empty explanation of why this edit is appropriate.",
-      }),
-      confidence: Type.Integer({
-        minimum: 0,
-        maximum: 10,
-        description: "Required integer self-assessed confidence score from 0 to 10. A score of 10 must be justified by the confidenceReason argument.",
-      }),
-      confidenceReason: Type.String({
-        minLength: 1,
-        description: "Required non-empty argument for the confidence score, including evidence and uncertainty. For confidence 10, explain the concrete verification, exact mechanical nature, or exact local pattern that justifies maximum confidence.",
+        description: "Required concise justification for this edit, focusing on user requirements, evidence, constraints, or assumptions not obvious from the diff.",
       }),
     },
     { additionalProperties: false },
@@ -425,20 +416,10 @@ function formatEditProvenance(
   const blocks = edits.map((edit, index) => {
     const intent = typeof edit.intent === "string" ? edit.intent : undefined;
     const rationale = typeof edit.rationale === "string" ? edit.rationale : undefined;
-    const confidence = typeof edit.confidence === "number" ? edit.confidence : undefined;
-    const confidenceReason =
-      typeof edit.confidenceReason === "string" ? edit.confidenceReason : undefined;
 
-    const header =
-      confidence !== undefined
-        ? `Edit ${index + 1} - Confidence: ${confidence}/10`
-        : `Edit ${index + 1}`;
-    const lines = [`${theme.bold(header)}`];
+    const lines = [`${theme.bold(`Edit ${index + 1}`)}`];
     if (intent !== undefined) lines.push(`  Intent: ${intent}`);
     if (rationale !== undefined) lines.push(`  Rationale: ${rationale}`);
-    if (confidenceReason !== undefined) {
-      lines.push(`  Confidence reason: ${confidenceReason}`);
-    }
     return lines.join("\n");
   });
 
