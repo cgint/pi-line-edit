@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "fs/promises";
 import register from "../../index";
-import { computeLineHash } from "../../src/hashline";
-import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
+import { fullHashRef, makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
 function getText(result: { content: Array<{ text?: string }> }): string {
   return result.content[0]?.text ?? "";
@@ -14,7 +13,7 @@ describe("edit tool noop + warnings", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-      const bRef = `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}`;
+      const bRef = fullHashRef(["aaa", "bbb", "ccc"], 2);
 
       const result = await editTool.execute(
         "e1",
@@ -43,7 +42,7 @@ describe("edit tool noop + warnings", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-      const bRef = `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}`;
+      const bRef = fullHashRef(["aaa", "bbb", "ccc"], 2);
 
       const result = await editTool.execute(
         "e1",

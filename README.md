@@ -1,17 +1,18 @@
 # pi-line-edit
 
-A [pi coding agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension for easier file edits using compact **checked line references**.
+A [pi coding agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension for safer file edits using full **checked endpoint line references**.
 
-This is a fork of [`@jerryan/pi-hashline-edit`](https://github.com/JerryAZR/pi-hashline-edit). It keeps the useful safety machinery (atomic writes, mutation queue, binary/image guards, previews, undo support) but changes the model-facing workflow from `LINE#HASH` anchors to compact refs like `128f`.
+This is a fork of [`@jerryan/pi-hashline-edit`](https://github.com/JerryAZR/pi-hashline-edit). It keeps the useful safety machinery (atomic writes, mutation queue, binary/image guards, previews, undo support) but changes the model-facing workflow from `LINE#HASH` anchors to read-output endpoint lines like `128f│content`.
 
 ## Why
 
-The stock `edit` tool requires exact old-text matches. Hashline editing improves stale-context safety, but models can get stuck when they forget or miscopy `LINE#HASH` anchors. This extension optimizes for reliable model behavior:
+The stock `edit` tool requires exact old-text matches. Hashline editing improves stale-context safety, but models can get stuck when they forget or miscopy anchors. This extension optimizes for reliable model behavior:
 
-- `read` shows checked line refs as `LINEc│content`, e.g. `128f│content`
-- `edit` accepts checked refs like `["128f", "130q"]` and rejects them if stale
-- plain ranges like `["128", "130"]` still work as a weaker fallback
-- edit diffs return fresh checked refs for chaining subsequent edits
+- `read` shows checked endpoint lines as `LINEc│content`, e.g. `128f│content`
+- `edit` requires full endpoint refs like `["128f│old", "130q│end"]`
+- compact refs like `"128f"` and plain line numbers like `"128"` are rejected
+- if only surrounding context changed but endpoint content still matches, `edit` can proceed with a stale-context warning
+- edit diffs return fresh checked endpoint refs for chaining subsequent edits
 
 ## Installation
 
@@ -53,7 +54,12 @@ Replace one line:
 {
   "path": "src/main.ts",
   "edits": [
-    { "range": ["9m", "9m"], "lines": ["  console.log('pi-line-edit');"] }
+    {
+      "range": ["9m│  console.log(\"world\");", "9m│  console.log(\"world\");"],
+      "lines": ["  console.log('pi-line-edit');"],
+      "intent": "Update the example greeting output.",
+      "rationale": "The README demonstrates replacing exactly one read-output endpoint line."
+    }
   ]
 }
 ```
@@ -64,7 +70,12 @@ Replace a range:
 {
   "path": "src/main.ts",
   "edits": [
-    { "range": ["20a", "25z"], "lines": ["function foo() {", "  return 42;", "}"] }
+    {
+      "range": ["20a│function foo() {", "25z│}"],
+      "lines": ["function foo() {", "  return 42;", "}"],
+      "intent": "Make foo return the documented sentinel value.",
+      "rationale": "The selected full endpoint range spans the old function body."
+    }
   ]
 }
 ```
@@ -75,12 +86,17 @@ Delete lines:
 {
   "path": "src/main.ts",
   "edits": [
-    { "range": ["30b", "33x"], "lines": [] }
+    {
+      "range": ["30b│  debug();", "33x│  trace();"],
+      "lines": [],
+      "intent": "Remove obsolete debug-only statements.",
+      "rationale": "The selected full endpoint range contains only the debug block being removed."
+    }
   ]
 }
 ```
 
-All edits in a single call validate against the same pre-edit snapshot and apply bottom-up, so checked refs stay consistent across operations. Bare line numbers resolve against current file contents and intentionally skip checksum validation.
+All edits in a single call validate against the same pre-edit snapshot and apply bottom-up, so checked refs stay consistent across operations. Compact refs and bare line numbers are rejected; copy the full `LINEc│content` endpoint line from `read` or a prior edit diff.
 
 ## Diff output
 
@@ -95,9 +111,9 @@ Edit results return fresh checked refs in a clean line-numbered diff:
 
 ## Notes
 
-- `range` values are strings so they can carry the optional one-letter checksum suffix.
-- Prefer copied checked refs like `128f`; plain line numbers like `128` are accepted but have weaker stale-line protection.
-- `raw: true` on `read` returns plain text without checked line prefixes.
+- `range` values are strings so they can carry the one-letter checksum and endpoint content exactly as shown by `read`.
+- Always copy the full endpoint line, e.g. `128f│    return value`; compact refs and plain line numbers are rejected.
+- `raw: true` on `read` returns plain text without checked line prefixes, so raw output cannot be used directly as `edit` ranges.
 
 ## Credits
 

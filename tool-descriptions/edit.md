@@ -11,9 +11,9 @@ Each edit entry replaces an inclusive line range and must include concise proven
   "rationale": "Why this edit is justified."
 }
 ```
-- `range` — `[start, end]` pair. Prefer full checked lines copied from recent `read` or diff output, e.g. `["42f│const value = 1;", "44q│}"]`.
-  Compact checked refs like `"42f"` and plain 1-based line numbers like `"42"` are accepted as fallbacks.
-  When full endpoint content is supplied, it must match the current endpoint line after trimming outer whitespace.
+- `range` — `[start, end]` pair. Must use full checked endpoint lines copied from recent `read` or diff output, e.g. `["42f│const value = 1;", "44q│}"]`.
+  Compact checked refs like `"42f"` and plain line numbers like `"42"` are rejected.
+  Endpoint content must match the current endpoint line after trimming outer whitespace; if only surrounding context changed, the edit may proceed with a stale-context warning.
 - `lines` — new content replacing exactly the range (string array). Use `[]` to delete.
   Must be literal file content, not `LINEc│`-prefixed output. Match indentation exactly.
 - `intent` — required concise statement of the semantic goal this edit serves. Do not merely restate the literal line change.
@@ -32,7 +32,7 @@ Example:
 ```
 
 Rules:
-- Prefer copied full endpoint lines like `128f│    return value`; they make wrong range endpoints easier to catch.
+- Always copy full endpoint lines like `128f│    return value`; compact refs and plain line numbers are not accepted.
 - Do not include neighboring context lines in `lines` unless the range includes those lines.
 - Do not emit overlapping or adjacent edits — merge them into one, or split into separate calls if that would exceed 3 edits.
 - Do not omit `intent` or `rationale`; metadata strings must not be empty.

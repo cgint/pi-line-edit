@@ -4,7 +4,7 @@ import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
 function extractRef(text: string, content: string): string {
   const line = text.split("\n").find((l: string) => l.includes(`│${content}`))!;
-  return line.split("│")[0]!.replace(/^[+\- ]/, "").trim();
+  return line.replace(/^[+\- ]/, "").trim();
 }
 
 describe("chained line edits", () => {
@@ -207,10 +207,11 @@ describe("chained line edits", () => {
         ctx,
       );
 
-      // Bare line numbers intentionally resolve against current content; checked refs reject stale content.
+      const refreshedRead = await readTool.execute("r2", { path: "stale.ts" }, undefined, undefined, ctx);
+      const refreshedDRef = extractRef(refreshedRead.content[0].text, "D");
       await editTool.execute(
-        "e2-line-number",
-        { path: "stale.ts", edits: [{ range: ["4", "4"], lines: ["D-AGAIN"] }] },
+        "e2-refreshed",
+        { path: "stale.ts", edits: [{ range: [refreshedDRef, refreshedDRef], lines: ["D-AGAIN"] }] },
         undefined,
         undefined,
         ctx,

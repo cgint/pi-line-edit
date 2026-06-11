@@ -30,8 +30,7 @@ describe("undo tool", () => {
       const firstRead = await readTool.execute("r1", { path: "sample.ts" }, undefined, undefined, ctx);
       const betaRef = firstRead.content[0].text
         .split("\n")
-        .find((line: string) => line.includes("│beta"))!
-        .split("│")[0]!;
+        .find((line: string) => line.includes("│beta"))!;
 
       await editTool.execute(
         "e1",
@@ -64,8 +63,7 @@ describe("undo tool", () => {
       const firstRead = await readTool.execute("r1", { path: "sample.ts" }, undefined, undefined, ctx);
       const alphaRef = firstRead.content[0].text
         .split("\n")
-        .find((line: string) => line.includes("│alpha"))!
-        .split("│")[0]!;
+        .find((line: string) => line.includes("│alpha"))!;
 
       await editTool.execute(
         "e1",
@@ -95,8 +93,7 @@ describe("undo tool", () => {
       const firstRead = await readTool.execute("r1", { path: "sample.ts" }, undefined, undefined, ctx);
       const alphaRef = firstRead.content[0].text
         .split("\n")
-        .find((line: string) => line.includes("│alpha"))!
-        .split("│")[0]!;
+        .find((line: string) => line.includes("│alpha"))!;
 
       // Noop edit — identical content
       await editTool.execute(
@@ -127,8 +124,7 @@ describe("undo tool", () => {
       const firstRead = await readTool.execute("r1", { path: "sample.ts" }, undefined, undefined, ctx);
       const alphaRef = firstRead.content[0].text
         .split("\n")
-        .find((line: string) => line.includes("│alpha"))!
-        .split("│")[0]!;
+        .find((line: string) => line.includes("│alpha"))!;
 
       await editTool.execute(
         "e1",

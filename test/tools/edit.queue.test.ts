@@ -1,8 +1,7 @@
 import { symlink } from "fs/promises";
 import { readFile } from "fs/promises";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { computeLineHash } from "../../src/hashline";
-import { withTempFile } from "../support/fixtures";
+import { fullHashRef, withTempFile } from "../support/fixtures";
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   const original = await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
@@ -55,7 +54,7 @@ describe("edit tool file mutation queue", () => {
           path: "race.ts",
           edits: [
             {
-              range: [`1#${computeLineHash(["alpha", "beta", "gamma"], 0)}`, `1#${computeLineHash(["alpha", "beta", "gamma"], 0)}`],
+              range: [fullHashRef(["alpha", "beta", "gamma"], 1), fullHashRef(["alpha", "beta", "gamma"], 1)],
               lines: ["ALPHA"],
             },
           ],
@@ -70,7 +69,7 @@ describe("edit tool file mutation queue", () => {
           path: "race.ts",
           edits: [
             {
-              range: [`2#${computeLineHash(["ALPHA", "beta", "gamma"], 1)}`, `2#${computeLineHash(["ALPHA", "beta", "gamma"], 1)}`],
+              range: [fullHashRef(["ALPHA", "beta", "gamma"], 2), fullHashRef(["ALPHA", "beta", "gamma"], 2)],
               lines: ["BETA"],
             },
           ],
@@ -106,7 +105,7 @@ describe("edit tool file mutation queue", () => {
           path: "race.ts",
           edits: [
             {
-              range: [`1#${computeLineHash(["alpha", "beta", "gamma"], 0)}`, `1#${computeLineHash(["alpha", "beta", "gamma"], 0)}`],
+              range: [fullHashRef(["alpha", "beta", "gamma"], 1), fullHashRef(["alpha", "beta", "gamma"], 1)],
               lines: ["ALPHA"],
             },
           ],
@@ -121,7 +120,7 @@ describe("edit tool file mutation queue", () => {
           path: "linked-race.ts",
           edits: [
             {
-              range: [`2#${computeLineHash(["ALPHA", "beta", "gamma"], 1)}`, `2#${computeLineHash(["ALPHA", "beta", "gamma"], 1)}`],
+              range: [fullHashRef(["ALPHA", "beta", "gamma"], 2), fullHashRef(["ALPHA", "beta", "gamma"], 2)],
               lines: ["BETA"],
             },
           ],
@@ -157,7 +156,7 @@ describe("edit tool file mutation queue", () => {
           path: "race.ts",
           edits: [
             {
-              range: [`1#${computeLineHash(["alpha", "beta", "gamma"], 0)}`, `1#${computeLineHash(["alpha", "beta", "gamma"], 0)}`],
+              range: [fullHashRef(["alpha", "beta", "gamma"], 1), fullHashRef(["alpha", "beta", "gamma"], 1)],
               lines: ["ALPHA"],
             },
           ],
@@ -172,7 +171,7 @@ describe("edit tool file mutation queue", () => {
           path: "aliasdir/race.ts",
           edits: [
             {
-              range: [`2#${computeLineHash(["ALPHA", "beta", "gamma"], 1)}`, `2#${computeLineHash(["ALPHA", "beta", "gamma"], 1)}`],
+              range: [fullHashRef(["ALPHA", "beta", "gamma"], 2), fullHashRef(["ALPHA", "beta", "gamma"], 2)],
               lines: ["BETA"],
             },
           ],

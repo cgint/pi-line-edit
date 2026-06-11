@@ -30,15 +30,15 @@ import { buildChangedResponse, buildNoopResponse } from "./edit-response";
 import { setLastEdit } from "./undo";
 import { computePublicLineChecksum, getVisibleLineCount, parsePublicLineRef } from "./line-ref";
 
-function makeEditEntrySchema(fullLineDefault: boolean) {
+const FULL_ENDPOINT_REF_PATTERN = String.raw`^\s*[>+\-]*\s*\d+(?:[a-z]|#[0-9A-F]{2})\s*[│|]`;
+
+function makeEditEntrySchema() {
   return Type.Object(
     {
-      range: Type.Array(Type.String({ minLength: 1 }), {
+      range: Type.Array(Type.String({ minLength: 1, pattern: FULL_ENDPOINT_REF_PATTERN }), {
         minItems: 2,
         maxItems: 2,
-        description: fullLineDefault
-          ? `Inclusive line range [start, end]. Prefer full checked lines copied from read/diff output, e.g. ["42f│const value = 1;", "44q│}"]. Compact checked refs like "42f" and plain line numbers are accepted as fallbacks.`
-          : `Inclusive 1-based line range [start, end]. Prefer checked line refs copied from read/diff output, e.g. ["42f", "44q"]. Plain line numbers like ["42", "42"] are accepted as a weaker fallback.`,
+        description: `Inclusive line range [start, end]. Must use full checked endpoint lines copied from recent read or diff output, e.g. ["42f│const value = 1;", "44q│}"]. Compact refs like "42f" and plain line numbers like "42" are rejected.`,
       }),
       lines: Type.Array(Type.String(), {
         description: "New content lines. Use [] to delete.",
@@ -59,10 +59,10 @@ function makeEditEntrySchema(fullLineDefault: boolean) {
 export const hashlineEditToolSchema = Type.Object(
   {
     path: Type.String({ description: "path" }),
-    edits: Type.Array(makeEditEntrySchema(true), {
+    edits: Type.Array(makeEditEntrySchema(), {
       minItems: 1,
       maxItems: 3,
-      description: `REQUIRED: 1-3 edit entries only. Split larger changes into multiple edit calls. Each edit replaces the inclusive line range [start, end] with lines. Prefer full read-output endpoint lines; use [] to delete.`,
+      description: `REQUIRED: 1-3 edit entries only. Split larger changes into multiple edit calls. Each edit replaces the inclusive line range [start, end] with lines. Range endpoints must be full read-output endpoint lines; use [] to delete.`,
     }),
   },
   { additionalProperties: false },
@@ -96,21 +96,10 @@ const EDIT_DESC = readFileSync(
   "utf-8",
 ).trim();
 
-const EDIT_LEGACY_DESC = readFileSync(
-  new URL("../tool-descriptions/edit-legacy.md", import.meta.url),
-  "utf-8",
-).trim();
-
 const EDIT_PROMPT_SNIPPET = readFileSync(
   new URL("../tool-descriptions/edit-snippet.md", import.meta.url),
   "utf-8",
 ).trim();
-
-const EDIT_LEGACY_PROMPT_SNIPPET = readFileSync(
-  new URL("../tool-descriptions/edit-legacy-snippet.md", import.meta.url),
-  "utf-8",
-).trim();
-
 const DEFAULT_MAX_EDITS_PER_CALL = 3;
 
 type EditBehaviorOptions = {
@@ -160,39 +149,50 @@ export function normalizeEditItems(edits: Record<string, unknown>[]): HashlineTo
   });
 }
 
+function hasEndpointContent(ref: string): boolean {
+  return ref.includes(CONTENT_SEP) || ref.includes("|");
+}
+
 function anchorPublicLineRef(
   ref: string | undefined,
   fileLines: string[],
   visibleLineCount: number,
   label: "range start" | "range end",
   options: Pick<EditBehaviorOptions, "validateContentHint">,
+  warnings: string[],
 ): string | undefined {
   if (typeof ref !== "string") return ref;
+  if (!hasEndpointContent(ref)) {
+    throw new Error(
+      `[E_FULL_REF_REQUIRED] ${label} must be a full checked endpoint line copied from read or diff output, e.g. "42f${CONTENT_SEP}const value = 1;". Compact refs and plain line numbers are rejected.`,
+    );
+  }
+
   const parsed = parsePublicLineRef(ref);
   if (!parsed) return ref;
 
   const { line, checksum, contentHint } = parsed;
   if (line < 1 || line > visibleLineCount) {
     throw new Error(
-      `[E_RANGE_OOB] ${label} line ${line} does not exist (file has ${visibleLineCount} lines). Plain line-number ranges must reference existing lines, except ["${visibleLineCount + 1}", "${visibleLineCount + 1}"] which appends at end of file.`,
+      `[E_RANGE_OOB] ${label} line ${line} does not exist (file has ${visibleLineCount} lines). Use a full checked endpoint line from current read output.`,
     );
+  }
+
+  if (options.validateContentHint) {
+    const expected = normalizedContentHint(contentHint ?? "");
+    const actual = normalizedContentHint(fileLines[line - 1] ?? "");
+    if (expected !== actual) {
+      throw new Error(
+        `[E_LINE_CONTENT_MISMATCH] ${label} ${line}${checksum ?? ""} includes endpoint content that does not match current line ${line} after trimming. Given: ${JSON.stringify(expected)}. Current: ${JSON.stringify(actual)}. Re-read this region and retry with the updated full endpoint line.`,
+      );
+    }
   }
 
   if (checksum !== undefined) {
     const actualChecksum = computePublicLineChecksum(fileLines, line);
     if (checksum !== actualChecksum) {
-      throw new Error(
-        `[E_STALE_LINE] ${label} ${line}${checksum} no longer matches current line ${line}${actualChecksum}. Re-read this region and retry with the updated checked line reference.`,
-      );
-    }
-  }
-
-  if (options.validateContentHint && contentHint !== undefined) {
-    const expected = normalizedContentHint(contentHint);
-    const actual = normalizedContentHint(fileLines[line - 1] ?? "");
-    if (expected !== actual) {
-      throw new Error(
-        `[E_LINE_CONTENT_MISMATCH] ${label} ${line}${checksum ?? ""} includes endpoint content that does not match current line ${line} after trimming. Given: ${JSON.stringify(expected)}. Current: ${JSON.stringify(actual)}. Re-read this region or use compact ref "${line}${checksum ?? ""}" if you intentionally do not want content checking.`,
+      warnings.push(
+        `[W_STALE_CONTEXT] ${label} ${line}${checksum} context checksum changed to ${line}${actualChecksum}, but endpoint content still matches; proceeding with the current checked line.`,
       );
     }
   }
@@ -204,46 +204,19 @@ function anchorBareLineNumberEdits(
   edits: HashlineToolEdit[],
   content: string,
   options: Pick<EditBehaviorOptions, "validateContentHint">,
-): HashlineToolEdit[] {
+  warnings: string[] = [],
+): { edits: HashlineToolEdit[]; warnings: string[] } {
   const fileLines = content.split("\n");
   const visibleLineCount = getVisibleLineCount(content);
 
-  return edits.map((edit) => {
-    const pos = typeof edit.pos === "string" ? edit.pos.trim() : edit.pos;
-    const end = typeof edit.end === "string" ? edit.end.trim() : edit.end;
-    const parsedPos = typeof pos === "string" ? parsePublicLineRef(pos) : undefined;
-    const parsedEnd = typeof end === "string" ? parsePublicLineRef(end) : undefined;
-
-    if (parsedPos && parsedEnd) {
-      const startLine = parsedPos.line;
-      const endLine = parsedEnd.line;
-      const appendLine = visibleLineCount + 1;
-
-      if (startLine === appendLine && endLine === appendLine) {
-        if (visibleLineCount < 1) {
-          throw new Error(
-            "[E_EMPTY_FILE] Cannot append by line number to an empty file. Use the write tool to create initial content in an empty file.",
-          );
-        }
-
-        const lastLine = fileLines[visibleLineCount - 1] ?? "";
-        const lastRef = `${visibleLineCount}${ANCHOR_SEP}${computeLineHash(fileLines, visibleLineCount - 1)}`;
-        const appendedLines = edit.lines ?? [];
-        return {
-          ...edit,
-          pos: lastRef,
-          end: lastRef,
-          lines: [lastLine, ...appendedLines],
-        };
-      }
-    }
-
-    return {
+  return {
+    warnings,
+    edits: edits.map((edit) => ({
       ...edit,
-      pos: anchorPublicLineRef(edit.pos, fileLines, visibleLineCount, "range start", options) ?? edit.pos,
-      end: anchorPublicLineRef(edit.end, fileLines, visibleLineCount, "range end", options),
-    };
-  });
+      pos: anchorPublicLineRef(edit.pos, fileLines, visibleLineCount, "range start", options, warnings) ?? edit.pos,
+      end: anchorPublicLineRef(edit.end, fileLines, visibleLineCount, "range end", options, warnings),
+    })),
+  };
 }
 
 type EditTargetResult =
@@ -488,9 +461,8 @@ export async function computeEditPreview(
   const originalNormalized = target.normalized;
 
   try {
-    const resolved = resolveEditAnchors(
-      anchorBareLineNumberEdits(toolEdits, originalNormalized, options),
-    );
+    const anchored = anchorBareLineNumberEdits(toolEdits, originalNormalized, options);
+    const resolved = resolveEditAnchors(anchored.edits);
     const result = applyHashlineEdits(originalNormalized, resolved).content;
 
     if (originalNormalized === result) {
@@ -658,13 +630,12 @@ function makeEditToolDefinition(args: {
         }
         const { bom, normalized: originalNormalized, ending: originalEnding } = target;
 
-        const resolved = resolveEditAnchors(
-          anchorBareLineNumberEdits(toolEdits, originalNormalized, args.behavior),
-        );
+        const anchored = anchorBareLineNumberEdits(toolEdits, originalNormalized, args.behavior);
+        const resolved = resolveEditAnchors(anchored.edits);
 
         const anchorResult = applyHashlineEdits(originalNormalized, resolved, signal);
         const result = anchorResult.content;
-        const warnings = anchorResult.warnings;
+        const warnings = [...anchored.warnings, ...(anchorResult.warnings ?? [])];
         const originalLineCount = originalNormalized.split("\n").length - (originalNormalized.endsWith("\n") ? 1 : 0);
         if (result.length === 0 && originalLineCount > 50) {
           throw new Error(
@@ -718,19 +689,6 @@ const editToolDefinition: EditToolDefinition = makeEditToolDefinition({
   },
 });
 
-const legacyEditToolDefinition: EditToolDefinition = makeEditToolDefinition({
-  name: "edit_legacy",
-  label: "Edit Legacy",
-  description: EDIT_LEGACY_DESC,
-  promptSnippet: EDIT_LEGACY_PROMPT_SNIPPET,
-  behavior: {
-    validateContentHint: false,
-  },
-});
-
 export function registerEditTool(pi: ExtensionAPI): void {
   pi.registerTool(editToolDefinition);
-  if (process.env.PI_LINE_EDIT_REGISTER_LEGACY === "1") {
-    pi.registerTool(legacyEditToolDefinition);
-  }
 }

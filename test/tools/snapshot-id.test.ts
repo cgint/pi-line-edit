@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFile, writeFile } from "fs/promises";
 import register from "../../index";
 import { computeLineHash } from "../../src/hashline";
-import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
+import { fullHashRef, makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
 function getText(result: { content: Array<{ text?: string }> }): string {
   return result.content[0]?.text ?? "";
@@ -34,7 +34,7 @@ describe("snapshotId surface (details-only after W2)", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-      const bRef = `2#${computeLineHash(["alpha", "beta"], 1)}`;
+      const bRef = fullHashRef(["alpha", "beta"], 2);
 
       await editTool.execute(
         "e1",
@@ -60,7 +60,7 @@ describe("snapshotId surface (details-only after W2)", () => {
         const { pi, getTool } = makeFakePiRegistry();
         register(pi);
         const editTool = getTool("edit");
-        const fRef = `4#${computeLineHash(["one", "two", "three", "four", "five"], 3)}`;
+        const fRef = fullHashRef(["one", "two", "three", "four", "five"], 4);
 
         // External, unrelated change: line 2 mutated, line 4 still "four".
         await writeFile(path, "one\nTWO!\nthree\nfour\nfive\n", "utf-8");
@@ -95,7 +95,7 @@ describe("snapshotId surface (details-only after W2)", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-      const bRef = `2#${computeLineHash(["alpha", "beta"], 1)}`;
+      const bRef = fullHashRef(["alpha", "beta"], 2);
 
       const result = await editTool.execute(
         "e1",
@@ -139,7 +139,7 @@ describe("snapshotId surface (details-only after W2)", () => {
               path: "sample.txt",
               edits: [
                 {
-                  range: [`2#${computeLineHash(["one", "two", "three"], 1)}`, `2#${computeLineHash(["one", "two", "three"], 1)}`],
+                  range: [fullHashRef(["one", "two", "three"], 2), fullHashRef(["one", "two", "three"], 2)],
                   lines: ["TWO"],
                 },
               ],
@@ -179,7 +179,7 @@ describe("snapshotId surface (details-only after W2)", () => {
               path: "sample.txt",
               edits: [
                 {
-                  range: [`2#${computeLineHash(["one", "two", "three"], 1)}`, `2#${computeLineHash(["one", "two", "three"], 1)}`],
+                  range: [fullHashRef(["one", "two", "three"], 2), fullHashRef(["one", "two", "three"], 2)],
                   lines: ["TWO"],
                 },
               ],

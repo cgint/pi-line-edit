@@ -4,7 +4,7 @@ import register from "../../index";
 import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
 describe("line-number edit tool loop", () => {
-  it("rejects stale checked refs while allowing bare line-number fallback", async () => {
+  it("requires full endpoint refs and rejects stale full refs when endpoint content changed", async () => {
     await withTempFile("sample.ts", "alpha\nbeta\n", async ({ cwd, path }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -17,11 +17,9 @@ describe("line-number edit tool loop", () => {
       const firstText = firstRead.content[0].text as string;
       const betaRef = firstText
         .split("\n")
-        .find((line: string) => line.includes("│beta"))!
-        .split("│")[0]!
-        .trim();
+        .find((line: string) => line.includes("│beta"))!;
 
-      expect(betaRef).toMatch(/^2[a-z]$/);
+      expect(betaRef).toMatch(/^\s*2[a-z]│beta$/);
 
       await editTool.execute(
         "e1",
@@ -45,13 +43,17 @@ describe("line-number edit tool loop", () => {
           undefined,
           ctx,
         ),
-      ).rejects.toThrow(/\[E_STALE_LINE\]/);
+      ).rejects.toThrow(/\[E_LINE_CONTENT_MISMATCH\]/);
 
+      const secondRead = await readTool.execute("r2", { path: "sample.ts" }, undefined, undefined, ctx);
+      const beta1Ref = (secondRead.content[0].text as string)
+        .split("\n")
+        .find((line: string) => line.includes("│BETA1"))!;
       const secondEdit = await editTool.execute(
-        "e2-bare",
+        "e2-refreshed",
         {
           path: "sample.ts",
-          edits: [{ range: ["2", "2"], lines: ["BETA2"] }],
+          edits: [{ range: [beta1Ref, beta1Ref], lines: ["BETA2"] }],
         },
         undefined,
         undefined,

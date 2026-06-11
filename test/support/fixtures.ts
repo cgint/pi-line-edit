@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { join } from "path";
+import { computeLineHash } from "../../src/hashline";
 
 async function getWritableTempRoot(): Promise<string> {
   const fallback = join(process.cwd(), ".tmp");
@@ -38,4 +39,8 @@ export function makeFakePiRegistry() {
       return tool;
     },
   };
+}
+
+export function fullHashRef(fileLines: string[], lineNumber: number): string {
+  return `${lineNumber}#${computeLineHash(fileLines, lineNumber - 1)}│${fileLines[lineNumber - 1] ?? ""}`;
 }

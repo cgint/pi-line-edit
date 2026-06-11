@@ -11,11 +11,11 @@ import { computePublicLineChecksum } from "../../src/line-ref";
 import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
 describe("assertEditRequest", () => {
-  it("accepts valid replace edit", () => {
+  it("accepts valid replace edit envelope", () => {
     expect(() =>
       assertEditRequest({
         path: "a.ts",
-        edits: [{ range: ["1#AB", "1#AB"], lines: ["x"] }],
+        edits: [{ range: ["1a│old", "1a│old"], lines: ["x"] }],
       }),
     ).not.toThrow();
   });
@@ -23,7 +23,7 @@ describe("assertEditRequest", () => {
 });
 
 describe("registerEditTool", () => {
-  it("publishes a schema that validates strict hashline payloads", () => {
+  it("publishes a schema that validates long-form endpoint refs", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(hashlineEditToolSchema as any);
 
@@ -32,10 +32,10 @@ describe("registerEditTool", () => {
         path: "a.ts",
         edits: [
           {
-            range: ["1#AB", "1#AB"],
+            range: ["1a│old", "1a│old"],
             lines: ["x"],
             intent: "Make the target line contain the expected fixture value.",
-            rationale: "This exercises the published hashline edit payload with the required provenance fields.",
+            rationale: "This exercises the published hashline edit payload with required full endpoint refs.",
           },
         ],
       }),
@@ -79,7 +79,7 @@ describe("registerEditTool", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(hashlineEditToolSchema as any);
     const validEdit = {
-      range: ["1#AB", "1#AB"],
+      range: ["1a│old", "1a│old"],
       lines: ["x"],
       intent: "Make the target line contain the expected fixture value.",
       rationale: "The caller requested this value and the fixture isolates the target line.",
@@ -110,6 +110,7 @@ describe("registerEditTool", () => {
     expect(Array.isArray(rangeSchema.items)).toBe(false);
     expect(rangeSchema.items.type).toBe("string");
     expect(rangeSchema.items.minLength).toBe(1);
+    expect(rangeSchema.items.pattern).toContain("[│|]");
     expect(rangeSchema.minItems).toBe(2);
     expect(rangeSchema.maxItems).toBe(2);
 
@@ -118,6 +119,20 @@ describe("registerEditTool", () => {
     expect(editProperties.rationale.minLength).toBe(1);
     expect(editProperties.confidence).toBeUndefined();
     expect(editProperties.confidenceReason).toBeUndefined();
+  });
+
+  it("rejects compact, plain, and hash-only range refs in the published schema", () => {
+    const ajv = new Ajv({ allErrors: true });
+    const validate = ajv.compile(hashlineEditToolSchema as any);
+    const baseEdit = {
+      lines: ["x"],
+      intent: "Make the target line contain the expected fixture value.",
+      rationale: "The default edit tool requires full endpoint refs so stale context can be checked safely.",
+    };
+
+    for (const range of [["1a", "1a"], ["1", "1"], ["1#AB", "1#AB"]]) {
+      expect(validate({ path: "a.ts", edits: [{ ...baseEdit, range }] })).toBe(false);
+    }
   });
 
   it("registers the edit tool without a prepareArguments shim", () => {
@@ -183,11 +198,13 @@ describe("registerEditTool", () => {
     expect(rendered).toContain("--------------");
   });
 
-  it("executes strict hashline replace through the normal path", async () => {
+  it("executes full endpoint replace through the normal path", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd, path }) => {
       const { pi, getTool } = makeFakePiRegistry();
       registerEditTool(pi);
       const editTool = getTool("edit");
+      const lines = ["aaa", "bbb", "ccc"];
+      const ref = `2${computePublicLineChecksum(lines, 2)}│bbb`;
 
       const result = await editTool.execute(
         "e1",
@@ -195,7 +212,7 @@ describe("registerEditTool", () => {
           path: "sample.txt",
           edits: [
             {
-              range: [`2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}`, `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}`],
+              range: [ref, ref],
               lines: ["BBB"],
             },
           ],
@@ -216,11 +233,13 @@ describe("registerEditTool", () => {
       const { pi, getTool } = makeFakePiRegistry();
       registerEditTool(pi);
       const editTool = getTool("edit");
+      const lines = ["aaa", "bbb", "ccc"];
+      const ref = `2${computePublicLineChecksum(lines, 2)}│bbb`;
       const editArgs = {
         path: "sample.txt",
         edits: [
           {
-            range: [`2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}│bbb`, `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}│bbb`],
+            range: [ref, ref],
             lines: ["BBB"],
           },
         ],
@@ -261,31 +280,8 @@ describe("registerEditTool", () => {
       expect(result.details?.diff).toContain("+2");
     });
   });
-  it("appends at EOF when plain range is the line after the final visible line", async () => {
+  it("rejects compact and plain refs at execution time", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\n", async ({ cwd, path }) => {
-      const { pi, getTool } = makeFakePiRegistry();
-      registerEditTool(pi);
-      const editTool = getTool("edit");
-
-      const result = await editTool.execute(
-        "e1",
-        {
-          path: "sample.txt",
-          edits: [{ range: ["3", "3"], lines: ["ccc", "ddd"] }],
-        },
-        undefined,
-        undefined,
-        { cwd } as any,
-      );
-
-      expect(await readFile(path, "utf-8")).toBe("aaa\nbbb\nccc\nddd\n");
-      expect(result.details?.diff).toMatch(/\+3[a-z]│ccc/);
-      expect(result.details?.diff).toMatch(/\+4[a-z]│ddd/);
-    });
-  });
-
-  it("reports a line-number out-of-bounds error without mentioning missing hashes", async () => {
-    await withTempFile("sample.txt", "aaa\nbbb\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       registerEditTool(pi);
       const editTool = getTool("edit");
@@ -295,26 +291,28 @@ describe("registerEditTool", () => {
           "e1",
           {
             path: "sample.txt",
-            edits: [{ range: ["4", "4"], lines: ["too far"] }],
+            edits: [{ range: ["2b", "2b"], lines: ["BBB"] }],
           },
           undefined,
           undefined,
           { cwd } as any,
         ),
-      ).rejects.toThrow(/\[E_RANGE_OOB\].*line 4 does not exist.*file has 2 lines/i);
+      ).rejects.toThrow(/E_FULL_REF_REQUIRED/);
 
       await expect(
         editTool.execute(
           "e2",
           {
             path: "sample.txt",
-            edits: [{ range: ["4", "4"], lines: ["too far"] }],
+            edits: [{ range: ["2", "2"], lines: ["BBB"] }],
           },
           undefined,
           undefined,
           { cwd } as any,
         ),
-      ).rejects.not.toThrow(/missing hash|LINE#HASH/i);
+      ).rejects.toThrow(/E_FULL_REF_REQUIRED/);
+
+      expect(await readFile(path, "utf-8")).toBe("aaa\nbbb\n");
     });
   });
   it("accepts full endpoint lines and pipe separators with trimmed content matching", async () => {
@@ -340,6 +338,51 @@ describe("registerEditTool", () => {
     });
   });
 
+  it("accepts endpoint content containing the separator character", async () => {
+    await withTempFile("sample.txt", "aaa\nconst text = \"a│b\";\nccc\n", async ({ cwd, path }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+      const lines = ["aaa", "const text = \"a│b\";", "ccc"];
+      const ref = `2${computePublicLineChecksum(lines, 2)}│const text = \"a│b\";`;
+
+      await editTool.execute(
+        "e1",
+        {
+          path: "sample.txt",
+          edits: [{ range: [ref, ref], lines: ["const text = \"updated│value\";"] }],
+        },
+        undefined,
+        undefined,
+        { cwd } as any,
+      );
+
+      expect(await readFile(path, "utf-8")).toBe("aaa\nconst text = \"updated│value\";\nccc\n");
+    });
+  });
+
+  it("accepts full endpoint refs for blank lines", async () => {
+    await withTempFile("sample.txt", "aaa\n\nccc\n", async ({ cwd, path }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+      const lines = ["aaa", "", "ccc"];
+      const ref = `2${computePublicLineChecksum(lines, 2)}│`;
+
+      await editTool.execute(
+        "e1",
+        {
+          path: "sample.txt",
+          edits: [{ range: [ref, ref], lines: ["bbb"] }],
+        },
+        undefined,
+        undefined,
+        { cwd } as any,
+      );
+
+      expect(await readFile(path, "utf-8")).toBe("aaa\nbbb\nccc\n");
+    });
+  });
   it("rejects default full endpoint lines when endpoint content points at the wrong line", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd, path }) => {
       const { pi, getTool } = makeFakePiRegistry();
@@ -364,6 +407,56 @@ describe("registerEditTool", () => {
     });
   });
 
+  it("allows a stale public checksum when the same-numbered endpoint content still matches", async () => {
+    await withTempFile("sample.txt", "AAA\nbbb\nccc\n", async ({ cwd, path }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+      const originalLines = ["aaa", "bbb", "ccc"];
+      const staleRef = `2${computePublicLineChecksum(originalLines, 2)}│bbb`;
+
+      const result = await editTool.execute(
+        "e1",
+        {
+          path: "sample.txt",
+          edits: [{ range: [staleRef, staleRef], lines: ["BBB"] }],
+        },
+        undefined,
+        undefined,
+        { cwd } as any,
+      );
+
+      expect(await readFile(path, "utf-8")).toBe("AAA\nBBB\nccc\n");
+      const text = result.content?.[0]?.text ?? "";
+      expect(text).toContain("W_STALE_CONTEXT");
+      expect(result.details?.metrics?.warnings).toBeGreaterThan(0);
+    });
+  });
+
+  it("rejects stale public checksum when endpoint content moved off the same line", async () => {
+    await withTempFile("sample.txt", "aaa\nxxx\nbbb\nccc\n", async ({ cwd, path }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+      const originalLines = ["aaa", "bbb", "ccc"];
+      const staleRef = `2${computePublicLineChecksum(originalLines, 2)}│bbb`;
+
+      await expect(
+        editTool.execute(
+          "e1",
+          {
+            path: "sample.txt",
+            edits: [{ range: [staleRef, staleRef], lines: ["BBB"] }],
+          },
+          undefined,
+          undefined,
+          { cwd } as any,
+        ),
+      ).rejects.toThrow(/E_LINE_CONTENT_MISMATCH/);
+      expect(await readFile(path, "utf-8")).toBe("aaa\nxxx\nbbb\nccc\n");
+    });
+  });
+
   it("limits the default edit tool to three edit entries per call", async () => {
     await withTempFile("sample.txt", "a\nb\nc\nd\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
@@ -376,10 +469,10 @@ describe("registerEditTool", () => {
           {
             path: "sample.txt",
             edits: [
-              { range: ["1", "1"], lines: ["A"] },
-              { range: ["2", "2"], lines: ["B"] },
-              { range: ["3", "3"], lines: ["C"] },
-              { range: ["4", "4"], lines: ["D"] },
+              { range: ["1a│a", "1a│a"], lines: ["A"] },
+              { range: ["2b│b", "2b│b"], lines: ["B"] },
+              { range: ["3c│c", "3c│c"], lines: ["C"] },
+              { range: ["4d│d", "4d│d"], lines: ["D"] },
             ],
           },
           undefined,
@@ -390,43 +483,6 @@ describe("registerEditTool", () => {
     });
   });
 
-  it("keeps legacy edit behavior without endpoint content validation or the default edit-count limit", async () => {
-    const previous = process.env.PI_LINE_EDIT_REGISTER_LEGACY;
-    process.env.PI_LINE_EDIT_REGISTER_LEGACY = "1";
-    try {
-      await withTempFile("sample.txt", "aaa\nbbb\nccc\nddd\n", async ({ cwd, path }) => {
-        const { pi, getTool } = makeFakePiRegistry();
-        registerEditTool(pi);
-        const legacyEditTool = getTool("edit_legacy");
-        const lines = ["aaa", "bbb", "ccc", "ddd"];
-        const bRefWithWrongContent = `2${computePublicLineChecksum(lines, 2)}│ccc`;
-
-        await legacyEditTool.execute(
-          "e1",
-          {
-            path: "sample.txt",
-            edits: [
-              { range: ["1", "1"], lines: ["AAA"] },
-              { range: [bRefWithWrongContent, bRefWithWrongContent], lines: ["BBB"] },
-              { range: ["3", "3"], lines: ["CCC"] },
-              { range: ["4", "4"], lines: ["DDD"] },
-            ],
-          },
-          undefined,
-          undefined,
-          { cwd } as any,
-        );
-
-        expect(await readFile(path, "utf-8")).toBe("AAA\nBBB\nCCC\nDDD\n");
-      });
-    } finally {
-      if (previous === undefined) {
-        delete process.env.PI_LINE_EDIT_REGISTER_LEGACY;
-      } else {
-        process.env.PI_LINE_EDIT_REGISTER_LEGACY = previous;
-      }
-    }
-  });
 });
   it("rejects edits on empty files with E_EMPTY_FILE", async () => {
     await withTempFile("empty.txt", "", async ({ cwd }) => {
@@ -439,7 +495,7 @@ describe("registerEditTool", () => {
           "e1",
           {
             path: "empty.txt",
-            edits: [{ range: ["1#AB", "1#AB"], lines: ["hello"] }],
+            edits: [{ range: ["1a│", "1a│"], lines: ["hello"] }],
           },
           undefined,
           undefined,

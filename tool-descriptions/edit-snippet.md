@@ -1,1 +1,1 @@
-Edit a text file by replacing ranges. Prefer full endpoint lines copied from read output, e.g. `128f│    return value`; compact refs like `128f` remain a fallback. Max 3 edits per call.
+Edit a text file by replacing ranges. Range endpoints must be full checked lines copied from read output, e.g. `128f│    return value`; compact refs like `128f` and plain line numbers are rejected. Max 3 edits per call.
