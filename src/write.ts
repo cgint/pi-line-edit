@@ -22,14 +22,6 @@ export const writeToolSchema = Type.Object(
     content: Type.String({
       description: "Content to write to the file",
     }),
-    intent: Type.String({
-      minLength: 1,
-      description: "Required concise semantic goal this write serves; do not merely restate that the file is being written.",
-    }),
-    rationale: Type.String({
-      minLength: 1,
-      description: "Required concise justification for this write, focusing on user requirements, evidence, constraints, or assumptions not obvious from the content.",
-    }),
   },
   { additionalProperties: false },
 );
@@ -37,8 +29,6 @@ export const writeToolSchema = Type.Object(
 type WriteRequestParams = {
   path: string;
   content: string;
-  intent: string;
-  rationale: string;
 };
 
 export function assertWriteRequest(request: unknown): asserts request is WriteRequestParams {
@@ -54,26 +44,6 @@ export function assertWriteRequest(request: unknown): asserts request is WriteRe
   }
 }
 
-function formatWriteProvenance(
-  args: Partial<WriteRequestParams> | undefined,
-  theme: { bold: (text: string) => string; fg: (token: string, text: string) => string },
-): string | undefined {
-  if (!args) return undefined;
-
-  const intent = typeof args.intent === "string" ? args.intent : undefined;
-  const rationale = typeof args.rationale === "string" ? args.rationale : undefined;
-
-  if (intent === undefined && rationale === undefined) {
-    return undefined;
-  }
-
-  const lines = [`${theme.bold("Write provenance")}`];
-  if (intent !== undefined) lines.push(`  Intent: ${intent}`);
-  if (rationale !== undefined) lines.push(`  Rationale: ${rationale}`);
-
-  return `${theme.fg("toolOutput", theme.bold("Write provenance:"))}\n${lines.join("\n")}\n--------------`;
-}
-
 function formatWriteCall(
   args: Partial<WriteRequestParams> | undefined,
   theme: { bold: (text: string) => string; fg: (token: string, text: string) => string },
@@ -85,14 +55,7 @@ function formatWriteCall(
       : theme.fg("toolOutput", "...");
   const lineCount = typeof args?.content === "string" ? args.content.split("\n").length : 0;
   const lineInfo = lineCount > 0 ? theme.fg("muted", ` (${lineCount} lines)`) : "";
-  let text = `${theme.fg("toolTitle", theme.bold("write"))} ${pathDisplay}${lineInfo}`;
-
-  const provenance = formatWriteProvenance(args, theme);
-  if (provenance) {
-    text += `\n\n${provenance}`;
-  }
-
-  return text;
+  return `${theme.fg("toolTitle", theme.bold("write"))} ${pathDisplay}${lineInfo}`;
 }
 
 type WriteToolDefinition = ToolDefinition<typeof writeToolSchema> & { renderShell?: "default" | "self" };

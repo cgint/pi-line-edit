@@ -14,39 +14,31 @@ describe("assertWriteRequest", () => {
       assertWriteRequest({
         path: "a.ts",
         content: "export {};\n",
-        intent: "Create the requested module.",
-        rationale: "The file needs complete initial content.",
       }),
     ).not.toThrow();
   });
 });
 
 describe("registerWriteTool", () => {
-  it("publishes a schema requiring non-empty intent and rationale provenance metadata", () => {
+  it("publishes a schema without intent/rationale fields", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(writeToolSchema as any);
     const validWrite = {
       path: "a.ts",
       content: "export {};\n",
-      intent: "Create the requested module.",
-      rationale: "The file needs complete initial content.",
     };
 
     expect(validate(validWrite)).toBe(true);
 
-    for (const key of ["intent", "rationale"] as const) {
-      const write = { ...validWrite };
-      delete write[key];
-      expect(validate(write)).toBe(false);
-      expect(validate({ ...validWrite, [key]: "" })).toBe(false);
-    }
-
+    // intent/rationale must be rejected (additionalProperties: false)
+    expect(validate({ ...validWrite, intent: "nope" })).toBe(false);
+    expect(validate({ ...validWrite, rationale: "nope" })).toBe(false);
     expect(validate({ ...validWrite, confidence: 8 })).toBe(false);
     expect(validate({ ...validWrite, confidenceReason: "obsolete" })).toBe(false);
     expect(validate({ ...validWrite, extra: "nope" })).toBe(false);
   });
 
-  it("renders write provenance metadata in the visible call", () => {
+  it("renders write call without provenance metadata", () => {
     const { pi, getTool } = makeFakePiRegistry();
     registerWriteTool(pi);
     const writeTool = getTool("write");
@@ -59,8 +51,6 @@ describe("registerWriteTool", () => {
       {
         path: "sample.txt",
         content: "hello\n",
-        intent: "Create the greeting file.",
-        rationale: "The requested output needs this file.",
       },
       theme,
       {
@@ -75,11 +65,9 @@ describe("registerWriteTool", () => {
 
     const rendered = component.render(200).join("\n");
     expect(rendered).toContain("write sample.txt");
-    expect(rendered).toContain("Write provenance:");
-    expect(rendered).toContain("Intent: Create the greeting file.");
-    expect(rendered).toContain("Rationale: The requested output needs this file.");
-    expect(rendered).not.toContain("Confidence");
-    expect(rendered).toContain("--------------");
+    expect(rendered).not.toContain("provenance");
+    expect(rendered).not.toContain("Intent");
+    expect(rendered).not.toContain("Rationale");
   });
 
   it("delegates execution to the built-in write tool", async () => {
@@ -93,8 +81,6 @@ describe("registerWriteTool", () => {
         {
           path: "sample.txt",
           content: "new\n",
-          intent: "Replace the file with the requested content.",
-          rationale: "The write tool is appropriate for full-file replacement.",
         },
         undefined,
         undefined,

@@ -34,8 +34,6 @@ describe("registerEditTool", () => {
           {
             range: ["1a│old", "1a│old"],
             lines: ["x"],
-            intent: "Make the target line contain the expected fixture value.",
-            rationale: "This exercises the published hashline edit payload with required full endpoint refs.",
           },
         ],
       }),
@@ -53,8 +51,6 @@ describe("registerEditTool", () => {
           {
             after: "1#AB",
             lines: ["x"],
-            intent: "Attempt an append-style edit shape.",
-            rationale: "This intentionally checks that unsupported append payloads remain rejected.",
           },
         ],
       }),
@@ -67,32 +63,25 @@ describe("registerEditTool", () => {
           {
             before: "1#AB",
             lines: ["x"],
-            intent: "Attempt a prepend-style edit shape.",
-            rationale: "This intentionally checks that unsupported prepend payloads remain rejected.",
           },
         ],
       }),
     ).toBe(false);
   });
 
-  it("requires non-empty intent and rationale provenance metadata", () => {
+  it("rejects intent/rationale in published schema", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(hashlineEditToolSchema as any);
     const validEdit = {
       range: ["1a│old", "1a│old"],
       lines: ["x"],
-      intent: "Make the target line contain the expected fixture value.",
-      rationale: "The caller requested this value and the fixture isolates the target line.",
     };
 
     expect(validate({ path: "a.ts", edits: [validEdit] })).toBe(true);
 
-    for (const key of ["intent", "rationale"] as const) {
-      const edit = { ...validEdit };
-      delete edit[key];
-      expect(validate({ path: "a.ts", edits: [edit] })).toBe(false);
-      expect(validate({ path: "a.ts", edits: [{ ...validEdit, [key]: "" }] })).toBe(false);
-    }
+    // intent/rationale must be rejected (additionalProperties: false)
+    expect(validate({ path: "a.ts", edits: [{ ...validEdit, intent: "nope" }] })).toBe(false);
+    expect(validate({ path: "a.ts", edits: [{ ...validEdit, rationale: "nope" }] })).toBe(false);
 
     expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidence: 8 }] })).toBe(false);
     expect(validate({ path: "a.ts", edits: [{ ...validEdit, confidenceReason: "obsolete" }] })).toBe(false);
@@ -115,8 +104,8 @@ describe("registerEditTool", () => {
     expect(rangeSchema.maxItems).toBe(2);
 
     const editProperties = (hashlineEditToolSchema as any).properties.edits.items.properties;
-    expect(editProperties.intent.minLength).toBe(1);
-    expect(editProperties.rationale.minLength).toBe(1);
+    expect(editProperties.intent).toBeUndefined();
+    expect(editProperties.rationale).toBeUndefined();
     expect(editProperties.confidence).toBeUndefined();
     expect(editProperties.confidenceReason).toBeUndefined();
   });
@@ -126,8 +115,6 @@ describe("registerEditTool", () => {
     const validate = ajv.compile(hashlineEditToolSchema as any);
     const baseEdit = {
       lines: ["x"],
-      intent: "Make the target line contain the expected fixture value.",
-      rationale: "The default edit tool requires full endpoint refs so stale context can be checked safely.",
     };
 
     for (const range of [["1a", "1a"], ["1", "1"], ["1#AB", "1#AB"]]) {
@@ -157,7 +144,7 @@ describe("registerEditTool", () => {
     expect(registered?.prepareArguments).toBeUndefined();
   });
 
-  it("renders edit provenance metadata in the visible call", () => {
+  it("renders edit call without provenance metadata", () => {
     const { pi, getTool } = makeFakePiRegistry();
     registerEditTool(pi);
     const editTool = getTool("edit");
@@ -173,8 +160,6 @@ describe("registerEditTool", () => {
           {
             range: ["1#AB", "1#AB"],
             lines: ["hello"],
-            intent: "Replace the sample greeting with the requested text.",
-            rationale: "The visible call should show only the required provenance fields for this edit.",
           },
         ],
       },
@@ -190,12 +175,11 @@ describe("registerEditTool", () => {
     ) as { render: (width: number) => string[] };
 
     const rendered = component.render(200).join("\n");
-    expect(rendered).toContain("Edit provenance:");
-    expect(rendered).toContain("Edit 1");
-    expect(rendered).toContain("Intent: Replace the sample greeting with the requested text.");
-    expect(rendered).toContain("Rationale: The visible call should show only the required provenance fields for this edit.");
-    expect(rendered).not.toContain("Confidence");
-    expect(rendered).toContain("--------------");
+    expect(rendered).toContain("edit sample.txt");
+    expect(rendered).not.toContain("provenance");
+    expect(rendered).not.toContain("Intent");
+    expect(rendered).not.toContain("Rationale");
+    expect(rendered).not.toContain("Edit 1");
   });
 
   it("executes full endpoint replace through the normal path", async () => {
