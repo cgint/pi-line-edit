@@ -43,7 +43,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "precommit": "npm run test && npm audit --audit-level=moderate"
+    "precommit": "tsc --noEmit && npm run test && npm audit --audit-level=moderate"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.3",
