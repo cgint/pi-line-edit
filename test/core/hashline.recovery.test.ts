@@ -31,7 +31,7 @@ describe("applyHashlineEdits — error handling", () => {
 
   it("throws on range start > end", () => {
     const content = "aaa\nbbb\nccc";
-    const edits = [
+    const edits: import("../../src/hashline").HashlineEdit[] = [
       {
         op: "replace",
         pos: makeTag(content, 3),
@@ -110,7 +110,7 @@ describe("applyHashlineEdits — error handling", () => {
 describe("applyHashlineEdits — heuristics", () => {
   it("preserves trailing boundary-looking lines in replacements", () => {
     const content = "if (ok) {\n  run();\n}\nafter();";
-    const edits = [
+    const edits: import("../../src/hashline").HashlineEdit[] = [
       {
         op: "replace",
         pos: makeTag(content, 1),
@@ -125,7 +125,7 @@ describe("applyHashlineEdits — heuristics", () => {
 
   it("preserves leading boundary-looking lines in replacements", () => {
     const content = "before();\nif (ok) {\n  run();\n}\nafter();";
-    const edits = [
+    const edits: import("../../src/hashline").HashlineEdit[] = [
       {
         op: "replace",
         pos: makeTag(content, 2),
@@ -148,7 +148,7 @@ describe("applyHashlineEdits — heuristics", () => {
 
     try {
       const content = "root\n\tchild\n\t\tvalue\nend";
-      const edits = [
+      const edits: import("../../src/hashline").HashlineEdit[] = [
         {
           op: "replace",
           pos: makeTag(content, 3),
@@ -175,7 +175,7 @@ describe("applyHashlineEdits — heuristics", () => {
 
   it("warns on literal \\uDDDD without changing content", () => {
     const content = "aaa\nbbb\nccc";
-    const edits = [
+    const edits: import("../../src/hashline").HashlineEdit[] = [
       {
         op: "replace",
         pos: makeTag(content, 2),

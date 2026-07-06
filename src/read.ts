@@ -216,7 +216,9 @@ export function registerReadTool(pi: ExtensionAPI): void {
 
       if (file.kind === "image") {
         const builtinRead = createReadTool(ctx.cwd);
-        return builtinRead.execute(_toolCallId, params, signal, _onUpdate, ctx);
+        return (builtinRead.execute as any)(
+          _toolCallId, params, signal, _onUpdate, ctx,
+        );
       }
 
       throwIfAborted(signal);

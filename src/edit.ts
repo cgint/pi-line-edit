@@ -1,4 +1,5 @@
 import { Text } from "@earendil-works/pi-tui";
+import { type ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
@@ -299,7 +300,7 @@ function getRenderablePreviewInput(args: unknown): EditRequestParams | null {
 
 function colorDiffLines(
   lines: string[],
-  theme: { fg: (token: string, text: string) => string },
+  theme: { fg: (color: ThemeColor, text: string) => string },
 ): string[] {
   return lines.map((line) => {
     if (line.startsWith("+") && !line.startsWith("+++")) {
@@ -314,7 +315,7 @@ function colorDiffLines(
 function formatPreviewDiff(
   diff: string,
   expanded: boolean,
-  theme: { fg: (token: string, text: string) => string },
+  theme: { fg: (color: ThemeColor, text: string) => string },
 ): string {
   const lines = diff.split("\n");
   const maxLines = expanded ? 40 : 16;
@@ -328,7 +329,7 @@ function formatPreviewDiff(
 
 function formatResultDiff(
   diff: string,
-  theme: { fg: (token: string, text: string) => string },
+  theme: { fg: (color: ThemeColor, text: string) => string },
 ): string {
   return colorDiffLines(diff.split("\n"), theme).join("\n");
 }
@@ -357,7 +358,7 @@ function buildAppliedChangedResultText(
   text: string | undefined,
   details: HashlineEditToolDetails | undefined,
   preview: EditPreview | undefined,
-  theme: { fg: (token: string, text: string) => string },
+  theme: { fg: (color: ThemeColor, text: string) => string },
 ): string | undefined {
   const previewDiff = preview && !("error" in preview) ? preview.diff : undefined;
   const sections: string[] = [];
@@ -378,7 +379,7 @@ function formatEditCall(
   expanded: boolean,
   theme: {
     bold: (text: string) => string;
-    fg: (token: string, text: string) => string;
+    fg: (color: ThemeColor, text: string) => string;
   },
 ): string {
   const path = args?.path;

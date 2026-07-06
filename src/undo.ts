@@ -1,4 +1,5 @@
 import { Text } from "@earendil-works/pi-tui";
+import { type ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
@@ -65,7 +66,7 @@ type UndoToolDetails = {
 
 function colorDiffLines(
   lines: string[],
-  theme: { fg: (token: string, text: string) => string },
+  theme: { fg: (color: ThemeColor, text: string) => string },
 ): string[] {
   return lines.map((line) => {
     if (line.startsWith("+") && !line.startsWith("+++")) {
