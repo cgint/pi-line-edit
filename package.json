@@ -46,9 +46,9 @@
     "precommit": "tsc --noEmit && npm run test && npm audit --audit-level=moderate"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.3",
-    "@types/node": "^22.0.0",
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@types/node": "^26.2.0",
     "ajv": "^8.20.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.10"
   }
 }
